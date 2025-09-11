@@ -1,0 +1,88 @@
+import boto3
+from abc import ABC, abstractmethod
+from typing import Dict, Any
+from botocore.exceptions import ClientError
+from app.utils.logger import get_logger
+from config import Config
+
+logger = get_logger(__name__)
+
+
+class BaseMigration(ABC):
+    def __init__(self):
+        self.dynamodb = boto3.client(
+            'dynamodb',
+            region_name=Config.AWS_REGION,
+            aws_access_key_id=Config.AWS_ACCESS_KEY_ID,
+            aws_secret_access_key=Config.AWS_SECRET_ACCESS_KEY
+        )
+
+    @abstractmethod
+    def get_table_name(self) -> str:
+        """Return the table name"""
+        pass
+
+    @abstractmethod
+    def get_table_schema(self) -> Dict[str, Any]:
+        """Return the table schema definition"""
+        pass
+
+    def table_exists(self) -> bool:
+        """Check if table already exists"""
+        try:
+            self.dynamodb.describe_table(TableName=self.get_table_name())
+            return True
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'ResourceNotFoundException':
+                return False
+            raise
+
+    def create_table(self) -> bool:
+        """Create the DynamoDB table"""
+        try:
+            table_name = self.get_table_name()
+
+            if self.table_exists():
+                logger.info(f"Table {table_name} already exists, skipping creation")
+                return True
+
+            logger.info(f"Creating table: {table_name}")
+
+            schema = self.get_table_schema()
+
+            response = self.dynamodb.create_table(**schema)
+
+            # Wait for table to be created
+            waiter = self.dynamodb.get_waiter('table_exists')
+            waiter.wait(TableName=table_name)
+
+            logger.info(f"Table {table_name} created successfully")
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to create table {table_name}: {str(e)}")
+            return False
+
+    def delete_table(self) -> bool:
+        """Delete the DynamoDB table"""
+        try:
+            table_name = self.get_table_name()
+
+            if not self.table_exists():
+                logger.info(f"Table {table_name} does not exist, skipping deletion")
+                return True
+
+            logger.info(f"Deleting table: {table_name}")
+
+            self.dynamodb.delete_table(TableName=table_name)
+
+            # Wait for table to be deleted
+            waiter = self.dynamodb.get_waiter('table_not_exists')
+            waiter.wait(TableName=table_name)
+
+            logger.info(f"Table {table_name} deleted successfully")
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to delete table {table_name}: {str(e)}")
+            return False
