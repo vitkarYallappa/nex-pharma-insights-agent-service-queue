@@ -1,65 +1,130 @@
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from datetime import datetime
 
+from app.utils.logger import get_logger
+from app.config import settings
 from .bedrock_service import ImplicationBedrockService
 from .prompt_config import ImplicationPromptManager
-from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 
 class ImplicationProcessor:
-    """Processor for generating business implications using AWS Bedrock"""
+    """Processor for generating market implications using AWS Bedrock Agent"""
     
     def __init__(self):
-        self.name = "Implication Processor"
+        self.service_name = "Implication Processor"
+        
+        # Initialize services
         self.bedrock_service = ImplicationBedrockService()
+        self.prompt_manager = ImplicationPromptManager(
+            environment=getattr(settings, 'ENVIRONMENT', 'development')
+        )
+        
+        logger.info(f"Initialized {self.service_name}")
     
-    def generate_implications(self, perplexity_response: str, url_data: Dict[str, Any], 
-                            user_prompt: str = "", content_id: str = "") -> Dict[str, Any]:
-        """Generate business implications from Perplexity response using Bedrock"""
-        try:
-            logger.info(f"Generating business implications for content ID: {content_id}")
+    async def generate_implications(self, content: str, content_id: str = "", metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """
+        Generate market implications from content using AWS Bedrock Agent
+        
+        Args:
+            content: The content to analyze for implications
+            content_id: Unique identifier for tracking
+            metadata: Additional context information
             
-            # Prepare implication prompt using prompt manager
-            implication_prompt = ImplicationPromptManager.get_prompt(
-                perplexity_response=perplexity_response,
-                url_data=url_data,
-                user_prompt=user_prompt,
-                content_id=content_id
+        Returns:
+            Dict containing implications and processing metadata
+        """
+        try:
+            logger.info(f"📋 Processing implications for content ID: {content_id}")
+            
+            # Validate input content
+            if not self.prompt_manager.validate_content(content):
+                raise ValueError("Invalid content provided for implication generation")
+            
+            # Prepare metadata with defaults
+            processing_metadata = metadata or {}
+            processing_metadata.update({
+                "processor": self.service_name,
+                "content_id": content_id,
+                "started_at": datetime.utcnow().isoformat(),
+                "content_length": len(content)
+            })
+            
+            # Format prompt using the prompt manager
+            formatted_prompt = self.prompt_manager.format_prompt(content, processing_metadata)
+            
+            logger.info(f"🤖 Invoking Bedrock Agent for implications...")
+            
+            # Generate implications using Bedrock Agent
+            result = await self.bedrock_service.generate_implications(
+                prompt=formatted_prompt,
+                content_id=content_id,
+                metadata=processing_metadata
             )
             
-            # Call Bedrock service
-            result = self.bedrock_service.generate_implications(implication_prompt, content_id)
+            if not result or not result.get("success"):
+                raise Exception(f"Failed to generate implications: {result.get('content', 'Unknown error')}")
             
-            # Process response
-            return {
-                "implications": result.get("content", ""),
-                "success": result.get("success", False),
-                "processing_metadata": {
-                    "processed_at": datetime.utcnow().isoformat(),
-                    "processor": self.name,
-                    "content_id": content_id,
-                    "url": url_data.get('url', ''),
-                    "prompt_length": len(implication_prompt),
-                    "prompt_mode": ImplicationPromptManager.get_current_mode(),
-                    "bedrock_model": result.get("model_used", "unknown")
-                },
-                "status": "success" if result.get("success") else "error"
-            }
+            # Add processor metadata to the result
+            result["processing_metadata"].update({
+                "processor": self.service_name,
+                "prompt_length": len(formatted_prompt),
+                "completed_at": datetime.utcnow().isoformat()
+            })
+            
+            logger.info(f"✅ Successfully generated implications for content: {content_id}")
+            return result
             
         except Exception as e:
-            logger.error(f"Error generating implications for content ID {content_id}: {str(e)}")
+            logger.error(f"❌ Error generating implications for content {content_id}: {str(e)}")
+            
+            # Return error result with consistent structure
             return {
-                "implications": f"Error generating implications: {str(e)}",
+                "content": f"Error generating implications: {str(e)}",
                 "success": False,
+                "model_used": "error",
                 "processing_metadata": {
-                    "processed_at": datetime.utcnow().isoformat(),
-                    "processor": self.name,
+                    "processor": self.service_name,
                     "content_id": content_id,
-                    "error": str(e)
-                },
-                "status": "error"
+                    "error": str(e),
+                    "failed_at": datetime.utcnow().isoformat()
+                }
             }
     
-
+    def get_service_info(self) -> Dict[str, Any]:
+        """Get information about the processor service"""
+        return {
+            "service_name": self.service_name,
+            "bedrock_service": "ImplicationBedrockService",
+            "prompt_manager": self.prompt_manager.get_environment_info(),
+            "capabilities": [
+                "strategic_implications",
+                "business_analysis", 
+                "operational_recommendations",
+                "financial_implications",
+                "regulatory_analysis"
+            ]
+        }
+    
+    async def test_service(self) -> bool:
+        """Test the implication generation service"""
+        try:
+            test_content = """
+            Market Analysis: The pharmaceutical industry is experiencing significant growth 
+            in personalized medicine, with increasing investment in genomic research and 
+            targeted therapies. Regulatory frameworks are evolving to support innovation 
+            while maintaining safety standards.
+            """
+            
+            result = await self.generate_implications(
+                content=test_content,
+                content_id="test-service",
+                metadata={"test_mode": True}
+            )
+            
+            return result.get("success", False)
+            
+        except Exception as e:
+            logger.error(f"Service test failed: {str(e)}")
+            return False 

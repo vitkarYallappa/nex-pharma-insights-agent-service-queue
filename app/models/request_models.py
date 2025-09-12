@@ -133,3 +133,64 @@ class ImplicationPayload(BaseModel):
     content_references: List[str]  # S3 paths to content
     analysis_type: str = "business_implications"
     implications: Dict[str, Any] = Field(default_factory=dict)
+
+
+class RegenerateInsightsRequest(BaseModel):
+    """Request model for regenerating insights"""
+    content_id: str = Field(..., description="Content ID to fetch existing summary for")
+    user_prompt: str = Field(..., description="User's custom prompt for regeneration")
+    metadata: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Additional metadata")
+    
+    @validator('content_id')
+    def validate_content_id(cls, v):
+        if not v or not v.strip():
+            raise ValueError('content_id cannot be empty')
+        return v.strip()
+    
+    @validator('user_prompt')
+    def validate_user_prompt(cls, v):
+        if not v or not v.strip():
+            raise ValueError('user_prompt cannot be empty')
+        if len(v.strip()) < 10:
+            raise ValueError('user_prompt must be at least 10 characters long')
+        return v.strip()
+
+
+class RegenerateImplicationsRequest(BaseModel):
+    """Request model for regenerating implications"""
+    content_id: str = Field(..., description="Content ID to fetch existing summary for")
+    user_prompt: str = Field(..., description="User's custom prompt for regeneration")
+    metadata: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Additional metadata")
+    
+    @validator('content_id')
+    def validate_content_id(cls, v):
+        if not v or not v.strip():
+            raise ValueError('content_id cannot be empty')
+        return v.strip()
+    
+    @validator('user_prompt')
+    def validate_user_prompt(cls, v):
+        if not v or not v.strip():
+            raise ValueError('user_prompt cannot be empty')
+        if len(v.strip()) < 10:
+            raise ValueError('user_prompt must be at least 10 characters long')
+        return v.strip()
+
+
+class RegenerateResponse(BaseModel):
+    """Response model for regeneration requests"""
+    success: bool = Field(..., description="Whether the regeneration was successful")
+    content_id: str = Field(..., description="Content ID that was processed")
+    regeneration_id: Optional[str] = Field(None, description="Unique ID for this regeneration")
+    regenerated_content: Optional[str] = Field(None, description="The regenerated content")
+    error_message: Optional[str] = Field(None, description="Error message if failed")
+    processing_metadata: Dict[str, Any] = Field(default_factory=dict, description="Processing metadata")
+
+
+class RegenerationHistoryResponse(BaseModel):
+    """Response model for regeneration history"""
+    success: bool = Field(..., description="Whether the request was successful")
+    content_id: str = Field(..., description="Content ID")
+    regeneration_history: List[Dict[str, Any]] = Field(default_factory=list, description="List of regenerations")
+    total_count: int = Field(default=0, description="Total number of regenerations")
+    error_message: Optional[str] = Field(None, description="Error message if failed")

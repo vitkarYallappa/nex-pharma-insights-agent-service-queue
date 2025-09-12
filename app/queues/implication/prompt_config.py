@@ -1,138 +1,187 @@
-"""
-Prompt configuration for Implication generation using AWS Bedrock
-Development and production prompts for business implications analysis
-"""
-import os
+from typing import Dict, Any
+from app.utils.logger import get_logger
+
+logger = get_logger(__name__)
+
 
 class ImplicationPromptConfig:
-    """Prompt configuration for business implications generation"""
+    """Configuration for implication generation prompts"""
     
-    # Development prompt - simple and quick for testing
+    # Development prompt - more detailed and structured
     DEVELOPMENT_PROMPT = """
-    Generate business implications from this research data:
-    
-    URL: {url}
-    Title: {title}
-    User Query: {user_prompt}
-    
-    Research Data:
-    {perplexity_response}
-    
-    Please provide:
-    1. Strategic impact (1-2 sentences)
-    2. Key risks (2-3 bullet points)
-    3. Implementation considerations (brief overview)
-    
-    Keep it concise for development testing.
-    """
-    
-    # Production prompt - comprehensive for real analysis
+You are a strategic business analyst specializing in market implications and strategic planning. 
+Analyze the provided market insights and generate comprehensive strategic implications.
+
+**INSTRUCTIONS:**
+1. Focus on actionable strategic implications for pharmaceutical and healthcare companies
+2. Provide specific, measurable recommendations where possible
+3. Consider both short-term tactical and long-term strategic implications
+4. Address regulatory, competitive, operational, and financial aspects
+5. Use clear, professional business language
+6. Structure your response with clear headings and bullet points
+
+**MARKET INSIGHTS TO ANALYZE:**
+{content}
+
+**GENERATE STRATEGIC IMPLICATIONS COVERING:**
+
+## Executive Summary
+- Key strategic takeaways and priority actions
+
+## Strategic Business Implications
+- Market positioning opportunities
+- Competitive advantage strategies  
+- Partnership and collaboration opportunities
+- Market entry/expansion strategies
+
+## Operational Implications
+- Resource allocation recommendations
+- Process optimization opportunities
+- Technology and infrastructure needs
+- Organizational capability requirements
+
+## Financial Implications
+- Investment priorities and opportunities
+- Cost optimization strategies
+- Revenue enhancement opportunities
+- Risk management considerations
+
+## Regulatory & Compliance Implications
+- Regulatory compliance requirements
+- Policy change impacts
+- Risk mitigation strategies
+
+## Long-term Strategic Recommendations
+- 3-5 year strategic priorities
+- Innovation and R&D focus areas
+- Market positioning strategies
+- Competitive differentiation approaches
+
+Provide specific, actionable recommendations that pharmaceutical companies can implement.
+"""
+
+    # Production prompt - more concise and focused
     PRODUCTION_PROMPT = """
-    Based on the following pharmaceutical/healthcare research data, generate comprehensive business implications:
+As a strategic business analyst, analyze these market insights and provide actionable strategic implications for pharmaceutical companies.
 
-    **SOURCE INFORMATION:**
-    - URL: {url}
-    - Title: {title}
-    - Original Query: {user_prompt}
-    - Content ID: {content_id}
+**MARKET INSIGHTS:**
+{content}
 
-    **RESEARCH DATA:**
-    {perplexity_response}
+**PROVIDE STRATEGIC IMPLICATIONS:**
 
-    **REQUIRED BUSINESS IMPLICATIONS:**
+## Executive Summary
+Key strategic priorities and immediate actions
 
-    1. **Strategic Business Impact**
-       - Strategic significance and relevance
-       - Impact on business objectives and goals
-       - Alignment with corporate strategy
-       - Long-term strategic implications
+## Business Strategy Implications
+- Market positioning opportunities
+- Competitive strategies
+- Partnership opportunities
 
-    2. **Operational Considerations**
-       - Operational changes required
-       - Resource allocation implications
-       - Process modifications needed
-       - Organizational capability requirements
+## Operational Implications  
+- Resource allocation priorities
+- Process improvements
+- Technology needs
 
-    3. **Financial Implications**
-       - Revenue impact and opportunities
-       - Cost implications and investments required
-       - ROI projections and financial benefits
-       - Budget and funding considerations
+## Financial Implications
+- Investment opportunities
+- Cost optimization
+- Revenue strategies
 
-    4. **Risk Assessment & Mitigation**
-       - Business risks and threats
-       - Market risks and uncertainties
-       - Regulatory and compliance risks
-       - Risk mitigation strategies and contingencies
+## Regulatory Implications
+- Compliance requirements
+- Risk mitigation
 
-    5. **Competitive Advantages/Disadvantages**
-       - Competitive positioning implications
-       - Differentiation opportunities
-       - Competitive threats and responses
-       - Market positioning strategies
+## Strategic Recommendations
+- Short-term actions (0-12 months)
+- Long-term strategy (1-3 years)
 
-    6. **Implementation Recommendations**
-       - Immediate action items and priorities
-       - Implementation timeline and milestones
-       - Required resources and capabilities
-       - Success metrics and KPIs
-       - Change management considerations
+Focus on specific, measurable, and actionable recommendations.
+"""
 
-    **FORMAT REQUIREMENTS:**
-    - Provide structured, actionable business implications
-    - Use clear headings and bullet points
-    - Include specific recommendations and action items
-    - Focus on pharmaceutical/healthcare business context
-    - Ensure implications are practical and implementable
-
-    Generate comprehensive business implications that enable informed decision-making and strategic planning.
-    """
 
 class ImplicationPromptManager:
-    """Prompt manager for implication generation with development and production modes"""
+    """Manager for implication prompt templates and processing"""
     
-    @staticmethod
-    def get_prompt(perplexity_response: str, url_data: dict, user_prompt: str = "", 
-                   content_id: str = "", mode: str = None) -> str:
-        """Get the appropriate implication prompt based on mode"""
+    def __init__(self, environment: str = "development"):
+        self.environment = environment.lower()
+        self.config = ImplicationPromptConfig()
         
-        # Determine mode: check environment or use parameter
-        if mode is None:
-            mode = os.getenv('IMPLICATION_MODE', 'development').lower()
-        
-        # Extract data from url_data
-        url = url_data.get('url', 'No URL provided')
-        title = url_data.get('title', 'No title available')
-        
-        # Choose prompt based on mode
-        if mode == 'production':
-            prompt_template = ImplicationPromptConfig.PRODUCTION_PROMPT
+        logger.info(f"Initialized ImplicationPromptManager for {self.environment} environment")
+    
+    def get_prompt_template(self) -> str:
+        """Get the appropriate prompt template based on environment"""
+        if self.environment == "production":
+            return self.config.PRODUCTION_PROMPT
         else:
-            prompt_template = ImplicationPromptConfig.DEVELOPMENT_PROMPT
+            return self.config.DEVELOPMENT_PROMPT
+    
+    def format_prompt(self, content: str, metadata: Dict[str, Any] = None) -> str:
+        """Format the prompt with content and metadata"""
+        try:
+            template = self.get_prompt_template()
+            
+            # Basic content formatting
+            formatted_prompt = template.format(content=content)
+            
+            # Add metadata context if available
+            if metadata:
+                context_info = self._format_metadata_context(metadata)
+                if context_info:
+                    formatted_prompt = f"{context_info}\n\n{formatted_prompt}"
+            
+            logger.info(f"Formatted implication prompt: {len(formatted_prompt)} characters")
+            return formatted_prompt
+            
+        except Exception as e:
+            logger.error(f"Error formatting implication prompt: {e}")
+            # Fallback to simple format
+            return f"Analyze these market insights and provide strategic implications:\n\n{content}"
+    
+    def _format_metadata_context(self, metadata: Dict[str, Any]) -> str:
+        """Format metadata into context information"""
+        context_parts = []
         
-        # Format the prompt with actual data
-        return prompt_template.format(
-            url=url,
-            title=title,
-            user_prompt=user_prompt or 'No specific query provided',
-            content_id=content_id or 'Unknown',
-            perplexity_response=perplexity_response or 'No research data available'
-        ).strip()
+        if metadata.get('content_type'):
+            context_parts.append(f"Content Type: {metadata['content_type']}")
+        
+        if metadata.get('source'):
+            context_parts.append(f"Source: {metadata['source']}")
+        
+        if metadata.get('industry_focus'):
+            context_parts.append(f"Industry Focus: {metadata['industry_focus']}")
+        
+        if metadata.get('geographic_region'):
+            context_parts.append(f"Geographic Region: {metadata['geographic_region']}")
+        
+        if metadata.get('time_horizon'):
+            context_parts.append(f"Time Horizon: {metadata['time_horizon']}")
+        
+        if context_parts:
+            return "**CONTEXT INFORMATION:**\n" + "\n".join(f"- {part}" for part in context_parts)
+        
+        return ""
     
-    @staticmethod
-    def get_available_modes() -> list:
-        """Get list of available prompt modes"""
-        return ['development', 'production']
+    def validate_content(self, content: str) -> bool:
+        """Validate content before processing"""
+        if not content or not content.strip():
+            logger.error("Content is empty or whitespace only")
+            return False
+        
+        if len(content) < 50:
+            logger.warning(f"Content is very short ({len(content)} characters)")
+            return False
+        
+        if len(content) > 100000:  # 100KB limit
+            logger.warning(f"Content is very long ({len(content)} characters)")
+            # Still valid, but will be truncated later
+        
+        return True
     
-    @staticmethod
-    def set_mode(mode: str) -> bool:
-        """Set the implication prompt mode (for runtime changes)"""
-        if mode.lower() in ['development', 'production']:
-            os.environ['IMPLICATION_MODE'] = mode.lower()
-            return True
-        return False
-    
-    @staticmethod
-    def get_current_mode() -> str:
-        """Get current prompt mode"""
-        return os.getenv('IMPLICATION_MODE', 'development').lower() 
+    def get_environment_info(self) -> Dict[str, Any]:
+        """Get information about current environment configuration"""
+        return {
+            "environment": self.environment,
+            "prompt_template": "production" if self.environment == "production" else "development",
+            "template_length": len(self.get_prompt_template()),
+            "supports_metadata": True
+        } 

@@ -17,7 +17,7 @@ from app.queues.request_acceptance.worker import RequestAcceptanceWorker
 from app.queues.serp.worker import SerpWorker
 from app.queues.perplexity.worker import PerplexityWorker
 from app.queues.insight.worker import InsightWorker
-# from app.queues.implication.worker import ImplicationWorker
+from app.queues.implication.worker import ImplicationWorker
 
 # Setup logging
 setup_logging()
@@ -195,7 +195,7 @@ async def start_workers():
             ("serp", SerpWorker),
             ("perplexity", PerplexityWorker),
             ("insight", InsightWorker),
-            # ("implication", ImplicationWorker),
+            ("implication", ImplicationWorker),
         ]
         
         for name, worker_class in worker_classes:

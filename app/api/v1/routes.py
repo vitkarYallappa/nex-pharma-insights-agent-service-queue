@@ -8,7 +8,9 @@ from pydantic import BaseModel
 
 from config import settings, QUEUE_TABLES, QUEUE_PROCESSING_LIMITS
 from app.models.request_models import (
-    MarketIntelligenceRequest, RequestResponse, RequestStatus
+    MarketIntelligenceRequest, RequestResponse, RequestStatus,
+    RegenerateInsightsRequest, RegenerateImplicationsRequest, 
+    RegenerateResponse, RegenerationHistoryResponse
 )
 from app.models.queue_models import QueueItemFactory
 from app.database.dynamodb_client import dynamodb_client
