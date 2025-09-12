@@ -3,19 +3,43 @@ from abc import ABC, abstractmethod
 from typing import Dict, Any
 from botocore.exceptions import ClientError
 from app.utils.logger import get_logger
-from config import Config
+from config import settings
 
 logger = get_logger(__name__)
 
 
 class BaseMigration(ABC):
     def __init__(self):
-        self.dynamodb = boto3.client(
-            'dynamodb',
-            region_name=Config.AWS_REGION,
-            aws_access_key_id=Config.AWS_ACCESS_KEY_ID,
-            aws_secret_access_key=Config.AWS_SECRET_ACCESS_KEY
-        )
+        # For local DynamoDB, use proper dummy credentials that boto3 accepts
+        if settings.dynamodb_endpoint or settings.dynamodb_endpoint_url:
+            # Local DynamoDB - use dummy credentials that boto3 accepts
+            aws_access_key = settings.aws_access_key_id or "local"
+            aws_secret_key = settings.aws_secret_access_key or "local"
+            
+            # Ensure credentials are valid format for boto3
+            if aws_access_key in ["dummy", "test"]:
+                aws_access_key = "local"
+            if aws_secret_key in ["dummy", "test"]:
+                aws_secret_key = "local"
+                
+            endpoint_url = settings.dynamodb_endpoint or settings.dynamodb_endpoint_url
+            region = settings.dynamodb_region or settings.aws_region
+                
+            self.dynamodb = boto3.client(
+                'dynamodb',
+                endpoint_url=endpoint_url,
+                aws_access_key_id=aws_access_key,
+                aws_secret_access_key=aws_secret_key,
+                region_name=region
+            )
+        else:
+            # AWS DynamoDB - use real credentials
+            self.dynamodb = boto3.client(
+                'dynamodb',
+                region_name=settings.aws_region,
+                aws_access_key_id=settings.aws_access_key_id,
+                aws_secret_access_key=settings.aws_secret_access_key
+            )
 
     @abstractmethod
     def get_table_name(self) -> str:

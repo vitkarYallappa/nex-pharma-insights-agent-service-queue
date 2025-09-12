@@ -4,8 +4,9 @@ import uuid
 
 from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 
-from config import settings, QUEUE_TABLES
+from config import settings, QUEUE_TABLES, QUEUE_PROCESSING_LIMITS
 from app.models.request_models import (
     MarketIntelligenceRequest, RequestResponse, RequestStatus
 )
@@ -16,6 +17,85 @@ from app.utils.logger import get_logger
 logger = get_logger(__name__)
 
 router = APIRouter(tags=["Market Intelligence"])
+
+
+class ProcessingLimitsUpdate(BaseModel):
+    """Model for updating processing limits"""
+    max_perplexity_urls_per_serp: int = None
+    max_serp_results: int = None
+    max_insight_items: int = None
+    max_implication_items: int = None
+    task_delay_seconds: int = None
+
+
+@router.get("/processing-limits")
+async def get_processing_limits():
+    """Get current processing limits configuration"""
+    try:
+        return {
+            "status": "success",
+            "processing_limits": QUEUE_PROCESSING_LIMITS,
+            "description": {
+                "max_perplexity_urls_per_serp": "Maximum URLs to send to Perplexity from each SERP result",
+                "max_serp_results": "Maximum search results to process",
+                "max_insight_items": "Maximum insight items per request",
+                "max_implication_items": "Maximum implication items per request",
+                "task_delay_seconds": "Delay in seconds between processing each queue item"
+            }
+        }
+    except Exception as e:
+        logger.error(f"Failed to get processing limits: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve processing limits")
+
+
+@router.post("/processing-limits")
+async def update_processing_limits(limits: ProcessingLimitsUpdate):
+    """Update processing limits configuration"""
+    try:
+        # Update only provided values
+        updated_limits = QUEUE_PROCESSING_LIMITS.copy()
+        
+        if limits.max_perplexity_urls_per_serp is not None:
+            if limits.max_perplexity_urls_per_serp < 1 or limits.max_perplexity_urls_per_serp > 20:
+                raise HTTPException(status_code=400, detail="max_perplexity_urls_per_serp must be between 1 and 20")
+            updated_limits["max_perplexity_urls_per_serp"] = limits.max_perplexity_urls_per_serp
+            
+        if limits.max_serp_results is not None:
+            if limits.max_serp_results < 1 or limits.max_serp_results > 100:
+                raise HTTPException(status_code=400, detail="max_serp_results must be between 1 and 100")
+            updated_limits["max_serp_results"] = limits.max_serp_results
+            
+        if limits.max_insight_items is not None:
+            if limits.max_insight_items < 1 or limits.max_insight_items > 50:
+                raise HTTPException(status_code=400, detail="max_insight_items must be between 1 and 50")
+            updated_limits["max_insight_items"] = limits.max_insight_items
+            
+        if limits.max_implication_items is not None:
+            if limits.max_implication_items < 1 or limits.max_implication_items > 50:
+                raise HTTPException(status_code=400, detail="max_implication_items must be between 1 and 50")
+            updated_limits["max_implication_items"] = limits.max_implication_items
+        
+        if limits.task_delay_seconds is not None:
+            if limits.task_delay_seconds < 0 or limits.task_delay_seconds > 60:
+                raise HTTPException(status_code=400, detail="task_delay_seconds must be between 0 and 60")
+            updated_limits["task_delay_seconds"] = limits.task_delay_seconds
+        
+        # Update the global configuration (in production, this would be stored in database)
+        QUEUE_PROCESSING_LIMITS.update(updated_limits)
+        
+        logger.info(f"Processing limits updated: {updated_limits}")
+        
+        return {
+            "status": "success",
+            "message": "Processing limits updated successfully",
+            "updated_limits": updated_limits
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update processing limits: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to update processing limits")
 
 
 @router.post("/market-intelligence-requests", response_model=RequestResponse)

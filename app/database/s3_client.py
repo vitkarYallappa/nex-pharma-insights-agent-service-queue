@@ -16,10 +16,22 @@ class S3Client:
     """S3 client for content storage operations"""
     
     def __init__(self):
+        # Configure credentials based on storage type
+        if settings.STORAGE_TYPE == "minio":
+            # Use MinIO credentials for local development
+            access_key = settings.MINIO_ACCESS_KEY
+            secret_key = settings.MINIO_SECRET_KEY
+            region = settings.aws_region
+        else:
+            # Use AWS credentials for production
+            access_key = settings.aws_access_key_id
+            secret_key = settings.aws_secret_access_key
+            region = settings.aws_region
+        
         self.session = boto3.Session(
-            aws_access_key_id=settings.aws_access_key_id,
-            aws_secret_access_key=settings.aws_secret_access_key,
-            region_name=settings.aws_region
+            aws_access_key_id=access_key,
+            aws_secret_access_key=secret_key,
+            region_name=region
         )
         
         self.client = self.session.client(
@@ -72,7 +84,8 @@ class S3Client:
         try:
             # Process data based on type
             if isinstance(data, dict):
-                body = json.dumps(data, indent=2, default=str)
+                # Ensure proper JSON serialization with clean formatting
+                body = json.dumps(data, indent=2, ensure_ascii=False, default=self._json_serializer)
                 content_type = 'application/json'
             elif isinstance(data, str):
                 body = data
@@ -87,7 +100,8 @@ class S3Client:
             # Add metadata
             metadata = {
                 'uploaded_at': datetime.utcnow().isoformat(),
-                'content_type': content_type
+                'original_content_type': 'application/json' if isinstance(data, dict) else content_type,
+                'compressed': str(compress).lower()
             }
             
             self.client.put_object(
@@ -98,35 +112,65 @@ class S3Client:
                 Metadata=metadata
             )
             
-            logger.debug(f"Successfully uploaded object to S3: {key}")
+            logger.debug(f"Successfully uploaded object to S3: {key} (compressed: {compress})")
             return True
             
-        except ClientError as e:
+        except Exception as e:
             logger.error(f"Failed to upload object {key}: {str(e)}")
             return False
+    
+    def _json_serializer(self, obj):
+        """Custom JSON serializer for complex objects"""
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        elif hasattr(obj, '__dict__'):
+            return obj.__dict__
+        else:
+            return str(obj)
     
     def get_object(self, key: str, decompress: bool = False) -> Optional[Union[str, bytes, Dict]]:
         """Get an object from S3"""
         try:
             response = self.client.get_object(Bucket=self.bucket_name, Key=key)
             body = response['Body'].read()
+            content_type = response.get('ContentType', '')
+            metadata = response.get('Metadata', {})
+            
+            # Check if object was compressed
+            is_compressed = (
+                decompress or 
+                content_type == 'application/gzip' or 
+                metadata.get('compressed', '').lower() == 'true'
+            )
             
             # Decompress if needed
-            if decompress or response.get('ContentType') == 'application/gzip':
+            if is_compressed and isinstance(body, bytes):
                 try:
                     body = gzip.decompress(body).decode('utf-8')
-                except:
-                    pass  # If decompression fails, return as is
+                    logger.debug(f"Decompressed object: {key}")
+                except Exception as e:
+                    logger.warning(f"Failed to decompress {key}: {str(e)}")
+                    # Continue with original body
             
-            # Try to parse as JSON if content type suggests it
-            content_type = response.get('ContentType', '')
-            if content_type == 'application/json' and isinstance(body, (str, bytes)):
+            # Convert bytes to string if needed
+            if isinstance(body, bytes):
                 try:
-                    if isinstance(body, bytes):
-                        body = body.decode('utf-8')
-                    return json.loads(body)
-                except json.JSONDecodeError:
-                    pass
+                    body = body.decode('utf-8')
+                except UnicodeDecodeError:
+                    logger.warning(f"Could not decode {key} as UTF-8")
+                    return body  # Return as bytes
+            
+            # Try to parse as JSON if it looks like JSON
+            original_content_type = metadata.get('original_content_type', content_type)
+            if (original_content_type == 'application/json' or 
+                (isinstance(body, str) and body.strip().startswith(('{', '[')))):
+                try:
+                    parsed_json = json.loads(body)
+                    logger.debug(f"Successfully parsed JSON from {key}")
+                    return parsed_json
+                except json.JSONDecodeError as e:
+                    logger.warning(f"Failed to parse JSON from {key}: {str(e)}")
+                    # Return as string if JSON parsing fails
             
             return body
             
@@ -137,6 +181,9 @@ class S3Client:
             else:
                 logger.error(f"Failed to get object {key}: {str(e)}")
                 return None
+        except Exception as e:
+            logger.error(f"Unexpected error getting object {key}: {str(e)}")
+            return None
     
     def delete_object(self, key: str) -> bool:
         """Delete an object from S3"""
@@ -217,46 +264,50 @@ class S3Client:
         return base_path
     
     def store_serp_data(self, project_id: str, request_id: str, 
-                       serp_data: Dict[str, Any]) -> str:
+                       serp_data: Dict[str, Any], compress: bool = False) -> str:
         """Store SERP data in S3"""
         timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
         key = self.generate_s3_path('serp_data', project_id, request_id, 
                                    f"serp_results_{timestamp}.json")
         
-        if self.put_object(key, serp_data, compress=True):
+        if self.put_object(key, serp_data, compress=compress):
+            logger.info(f"Stored SERP data in S3: {key} (compressed: {compress})")
             return key
         return ""
     
     def store_content_data(self, project_id: str, request_id: str, 
-                          content_data: Dict[str, Any]) -> str:
+                          content_data: Dict[str, Any], compress: bool = False) -> str:
         """Store content data in S3"""
         timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
         key = self.generate_s3_path('content_data', project_id, request_id,
                                    f"content_{timestamp}.json")
         
-        if self.put_object(key, content_data, compress=True):
+        if self.put_object(key, content_data, compress=compress):
+            logger.info(f"Stored content data in S3: {key} (compressed: {compress})")
             return key
         return ""
     
     def store_insights(self, project_id: str, request_id: str, 
-                      insights: Dict[str, Any]) -> str:
+                      insights: Dict[str, Any], compress: bool = False) -> str:
         """Store insights in S3"""
         timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
         key = self.generate_s3_path('insights', project_id, request_id,
                                    f"insights_{timestamp}.json")
         
-        if self.put_object(key, insights, compress=True):
+        if self.put_object(key, insights, compress=compress):
+            logger.info(f"Stored insights in S3: {key} (compressed: {compress})")
             return key
         return ""
     
     def store_implications(self, project_id: str, request_id: str, 
-                          implications: Dict[str, Any]) -> str:
+                          implications: Dict[str, Any], compress: bool = False) -> str:
         """Store implications in S3"""
         timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
         key = self.generate_s3_path('implications', project_id, request_id,
                                    f"implications_{timestamp}.json")
         
-        if self.put_object(key, implications, compress=True):
+        if self.put_object(key, implications, compress=compress):
+            logger.info(f"Stored implications in S3: {key} (compressed: {compress})")
             return key
         return ""
     

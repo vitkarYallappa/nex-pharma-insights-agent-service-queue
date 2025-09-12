@@ -1,80 +1,79 @@
-from typing import Dict, Any, List
-import json
+from typing import Dict, Any
 from datetime import datetime
+import asyncio
 
 from app.queues.base_worker import BaseWorker
-from app.queues.perplexity.content_service import PerplexityContentService
 from app.database.s3_client import s3_client
 from app.utils.logger import get_logger
+from .processor import PerplexityProcessor
+from .db_operations_service import db_operations_service
 
 logger = get_logger(__name__)
 
 
 class PerplexityWorker(BaseWorker):
-    """Worker for processing Perplexity AI enhancement queue"""
+    """Simple Perplexity worker - processes one URL with user prompt"""
     
     def __init__(self):
         super().__init__("perplexity")
-        self.content_service = PerplexityContentService()
+        self.processor = PerplexityProcessor()
     
     def process_item(self, item: Dict[str, Any]) -> bool:
-        """Process a Perplexity item for a batch of URLs"""
+        """Process Perplexity item - simple call with user prompt for one URL"""
         try:
             payload = item.get('payload', {})
             
-            search_data = payload.get('search_data', {})
-            analysis_prompt = payload.get('analysis_prompt', '')
+            # Get user prompt from payload
+            user_prompt = payload.get('analysis_prompt', '') or payload.get('user_prompt', '')
+            url_data = payload.get('url_data', {})
             
-            if not search_data:
-                logger.error("No search data found in payload")
+            if not user_prompt:
+                logger.error("No user prompt found in payload")
                 return False
             
-            source = search_data.get('source', {})
-            batch_index = search_data.get('batch_index', 0)
-            urls = search_data.get('urls', [])
+            url = url_data.get('url', 'Unknown URL')
+            url_index = payload.get('url_index', 1)
+            total_urls = payload.get('total_urls', 1)
             
-            logger.info(f"Processing Perplexity batch {batch_index+1} for source: {source.get('name')} with {len(urls)} URLs")
+            logger.info(f"Processing Perplexity request {url_index}/{total_urls} for URL: {url[:50]}...")
             
-            # Enhance data using Perplexity AI
-            enhanced_data = self._enhance_search_data(search_data, analysis_prompt)
+            # Call Perplexity with user prompt
+            perplexity_result = self._call_perplexity(user_prompt, payload)
             
-            if not enhanced_data:
-                logger.error(f"Failed to enhance search data for batch {batch_index+1}")
+            if not perplexity_result:
+                logger.error(f"Failed to get response from Perplexity for URL {url_index}/{total_urls}")
                 return False
             
             # Extract project and request IDs
             project_id, request_id = self._extract_ids_from_pk(item.get('PK', ''))
             
-            # Store enhanced data in S3
+            if not project_id or not request_id:
+                logger.error(f"Could not extract project/request IDs from PK: {item.get('PK')}")
+                return False
+            
+            # Store Perplexity response in S3
             s3_key = s3_client.store_content_data(project_id, request_id, {
-                'enhanced_search_data': enhanced_data,
-                'original_search_data': search_data,
-                'analysis_prompt': analysis_prompt,
+                'user_prompt': user_prompt,
+                'url_data': url_data,
+                'perplexity_response': perplexity_result.get('perplexity_response', ''),
+                'success': perplexity_result.get('success', False),
                 'processed_at': datetime.utcnow().isoformat(),
-                'batch_info': {
-                    'batch_index': batch_index,
-                    'source_name': source.get('name'),
-                    'urls_processed': len(urls)
-                },
-                'enhancement_metadata': {
-                    'ai_model_used': 'perplexity',
-                    'processing_time': enhanced_data.get('processing_time', 0),
-                    'confidence_score': enhanced_data.get('confidence_score', 0.0)
-                }
+                'processing_metadata': perplexity_result.get('processing_metadata', {}),
+                'url_index': url_index,
+                'total_urls': total_urls
             })
             
             if not s3_key:
-                logger.error(f"Failed to store enhanced data in S3 for batch {batch_index+1}")
+                logger.error(f"Failed to store Perplexity response in S3 for URL {url_index}/{total_urls}")
                 return False
             
-            # Update payload with enhanced results
+            # Update payload with Perplexity response
             updated_payload = payload.copy()
             updated_payload.update({
-                'enhanced_data': enhanced_data,
-                's3_enhanced_key': s3_key,
-                'processed_at': datetime.utcnow().isoformat(),
-                'enhancement_summary': enhanced_data.get('summary', {}),
-                'content_references': self._extract_content_references(enhanced_data)
+                'perplexity_response': perplexity_result.get('perplexity_response', ''),
+                'perplexity_success': perplexity_result.get('success', False),
+                's3_perplexity_key': s3_key,
+                'processed_at': datetime.utcnow().isoformat()
             })
             
             # Update the item in DynamoDB
@@ -91,73 +90,120 @@ class PerplexityWorker(BaseWorker):
             )
             
             if success:
-                logger.info(f"Successfully processed Perplexity enhancement for batch {batch_index+1}")
+                logger.info(f"Successfully processed Perplexity request {url_index}/{total_urls}")
+                
+                # Process additional table operations
+                try:
+                    db_data = {
+                        'project_id': project_id,
+                        'request_id': request_id,
+                        'url_data': url_data,
+                        'perplexity_response': perplexity_result.get('perplexity_response', ''),
+                        'source_info': payload.get('source_info', {}),
+                        'processing_metadata': perplexity_result.get('processing_metadata', {}),
+                        'url_index': url_index,
+                        'total_urls': total_urls
+                    }
+                    
+                    # Call DB operations service for additional tables
+                    db_results = db_operations_service.process_perplexity_completion(db_data)
+                    logger.info(f"DB operations completed for {url_index}/{total_urls}: {db_results.get('processing_metadata', {}).get('status', 'unknown')}")
+                    
+                except Exception as db_error:
+                    logger.error(f"DB operations failed for {url_index}/{total_urls}: {str(db_error)}")
+                    # Don't fail the main process if DB operations fail
+                
+                # Create updated item for _trigger_next_queues with the new payload
+                updated_item = item.copy()
+                updated_item['payload'] = updated_payload
+                
+                # Manually trigger next queues with updated item
+                self._trigger_next_queues(updated_item)
+                
                 return True
             else:
-                logger.error(f"Failed to update Perplexity payload for batch {batch_index+1}")
+                logger.error(f"Failed to update Perplexity payload for URL {url_index}/{total_urls}")
                 return False
                 
         except Exception as e:
             logger.error(f"Error processing Perplexity item: {str(e)}")
             return False
     
-    def prepare_next_queue_payload(self, next_queue: str, completed_item: Dict[str, Any]) -> Dict[str, Any]:
-        """Prepare payload for next queues - NOT USED, we override _create_next_queue_item"""
-        # This won't be used since we override _create_next_queue_item
-        return {}
+    def _process_item(self, item: Dict[str, Any]):
+        """Override base worker's _process_item to handle our custom flow"""
+        pk = item.get('PK')
+        sk = item.get('SK')
+        
+        if not pk or not sk:
+            logger.error(f"Invalid item keys: PK={pk}, SK={sk}")
+            return
+        
+        try:
+            # Update status to processing
+            from app.models.queue_models import QueueStatus
+            self._update_item_status(pk, sk, QueueStatus.PROCESSING)
+            
+            # Process the item (this calls our overridden process_item method)
+            success = self.process_item(item)
+            
+            if success:
+                # Update status to completed
+                self._update_item_status(pk, sk, QueueStatus.COMPLETED)
+                logger.info(f"Successfully processed item: {pk}")
+                # Note: _trigger_next_queues is called inside process_item with updated data
+            else:
+                # Handle failure
+                self._handle_processing_failure(item)
+                
+        except Exception as e:
+            logger.error(f"Error processing item {pk}: {str(e)}")
+            self._handle_processing_error(item, str(e))
     
-    def _create_next_queue_item(self, next_queue: str, project_id: str, 
-                               request_id: str, completed_item: Dict[str, Any]):
-        """Override to create BOTH Insight and Implication queue items simultaneously"""
-        # We want to trigger BOTH insight and implication queues for each Perplexity completion
+    def _trigger_next_queues(self, completed_item: Dict[str, Any]):
+        """Override to create BOTH insight and implication queue items for this URL"""
         from app.models.queue_models import QueueItemFactory
         from app.database.dynamodb_client import dynamodb_client
         from config import QUEUE_TABLES
         
+        logger.info(f"DEBUG: Perplexity _trigger_next_queues called with item keys: {list(completed_item.keys())}")
+        
+        project_id, request_id = self._extract_ids_from_pk(completed_item.get('PK', ''))
+        
+        if not project_id or not request_id:
+            logger.error(f"Could not extract project/request IDs from PK: {completed_item.get('PK')}")
+            return
+        
         payload = completed_item.get('payload', {})
-        enhanced_data = payload.get('enhanced_data', {})
-        search_data = payload.get('search_data', {})
-        source = search_data.get('source', {})
-        batch_index = search_data.get('batch_index', 0)
+        logger.info(f"DEBUG: Perplexity payload keys: {list(payload.keys())}")
         
-        # Extract content references for both queues
-        content_references = payload.get('content_references', [])
-        s3_enhanced_key = payload.get('s3_enhanced_key', '')
+        url_data = payload.get('url_data', {})
+        url_index = payload.get('url_index', 1)
+        total_urls = payload.get('total_urls', 1)
+        perplexity_response = payload.get('perplexity_response', '')
         
-        # Create both Insight and Implication queue items
-        queues_to_create = ['insight', 'implication']
+        logger.info(f"DEBUG: URL data: {url_data.get('url', 'No URL')[:50]}..., has perplexity_response: {len(perplexity_response) > 0}")
         
-        logger.info(f"Creating {len(queues_to_create)} queue items (insight + implication) for Perplexity batch {batch_index+1}")
+        # Create both insight and implication queue items for this URL
+        next_queues = ['insight', 'implication']
         
-        for queue_name in queues_to_create:
+        logger.info(f"Creating insight + implication queue items for URL {url_index}/{total_urls}")
+        
+        for queue_name in next_queues:
             try:
-                # Create payload specific to each queue type
-                if queue_name == 'insight':
-                    queue_payload = {
-                        'content_references': content_references,
-                        's3_enhanced_key': s3_enhanced_key,
-                        'analysis_type': 'market_insights',
-                        'source_info': {
-                            'name': source.get('name'),
-                            'type': source.get('type'),
-                            'batch_index': batch_index
-                        },
-                        'enhanced_summary': enhanced_data.get('summary', {}),
-                        'insights': {}
-                    }
-                else:  # implication
-                    queue_payload = {
-                        'content_references': content_references,
-                        's3_enhanced_key': s3_enhanced_key,
-                        'analysis_type': 'business_implications',
-                        'source_info': {
-                            'name': source.get('name'),
-                            'type': source.get('type'),
-                            'batch_index': batch_index
-                        },
-                        'enhanced_summary': enhanced_data.get('summary', {}),
-                        'implications': {}
-                    }
+                # Create payload for next queue
+                next_payload = {
+                    'perplexity_response': payload.get('perplexity_response', ''),
+                    'perplexity_success': payload.get('perplexity_success', False),
+                    's3_perplexity_key': payload.get('s3_perplexity_key', ''),
+                    'url_data': url_data,
+                    'analysis_type': 'market_insights' if queue_name == 'insight' else 'business_implications',
+                    'user_prompt': payload.get('user_prompt', ''),
+                    'source_info': payload.get('source_info', {}),
+                    'url_index': url_index,
+                    'total_urls': total_urls
+                }
+                
+                logger.info(f"DEBUG: Creating {queue_name} item with payload keys: {list(next_payload.keys())}")
                 
                 # Create queue item
                 queue_item = QueueItemFactory.create_queue_item(
@@ -166,12 +212,13 @@ class PerplexityWorker(BaseWorker):
                     project_request_id=request_id,
                     priority=completed_item.get('priority', 'medium'),
                     processing_strategy=completed_item.get('processing_strategy', 'table'),
-                    payload=queue_payload,
+                    payload=next_payload,
                     metadata={
                         **completed_item.get('metadata', {}),
-                        'source_name': source.get('name', ''),
-                        'batch_index': batch_index,
-                        'analysis_type': queue_payload['analysis_type'],
+                        'url': url_data.get('url', ''),
+                        'url_index': url_index,
+                        'total_urls': total_urls,
+                        'analysis_type': next_payload['analysis_type'],
                         'created_from': 'perplexity'
                     }
                 )
@@ -181,221 +228,39 @@ class PerplexityWorker(BaseWorker):
                 success = dynamodb_client.put_item(table_name, queue_item.dict())
                 
                 if success:
-                    logger.info(f"Created {queue_name} queue item for batch {batch_index+1} from source: {source.get('name')}")
+                    logger.info(f"Created {queue_name} queue item for URL {url_index}/{total_urls}")
                 else:
-                    logger.error(f"Failed to create {queue_name} queue item for batch {batch_index+1}")
+                    logger.error(f"Failed to create {queue_name} queue item for URL {url_index}/{total_urls}")
                     
             except Exception as e:
-                logger.error(f"Failed to create {queue_name} item for batch {batch_index+1}: {str(e)}")
+                logger.error(f"Failed to create {queue_name} item for URL {url_index}/{total_urls}: {str(e)}")
         
-        logger.info(f"Completed creating insight + implication queue items for Perplexity batch {batch_index+1}")
+        logger.info(f"Completed creating insight + implication queue items for URL {url_index}/{total_urls}")
     
-    def _extract_content_references(self, enhanced_data: Dict[str, Any]) -> List[str]:
-        """Extract content references from enhanced data"""
-        references = []
-        
-        # Get URLs from enhanced results
-        enhanced_results = enhanced_data.get('enhanced_results', [])
-        for result in enhanced_results:
-            if result.get('url') and result.get('content_priority') in ['high', 'medium']:
-                references.append(result['url'])
-        
-        # Get prioritized URLs from recommendations
-        priority_urls = enhanced_data.get('recommendations', {}).get('content_extraction_priority', [])
-        references.extend(priority_urls[:10])  # Limit to top 10
-        
-        # Remove duplicates
-        return list(set(references))
+    def prepare_next_queue_payload(self, next_queue: str, completed_item: Dict[str, Any]) -> Dict[str, Any]:
+        """Prepare simple payload for next queue - NOT USED since we override _trigger_next_queues"""
+        # This method won't be used since we override _trigger_next_queues
+        return {}
     
-    def _enhance_search_data(self, search_data: Dict[str, Any], analysis_prompt: str) -> Dict[str, Any]:
-        """Enhance search data using Perplexity AI"""
+    def _call_perplexity(self, user_prompt: str, context_data: Dict[str, Any] = None) -> Dict[str, Any]:
+        """Call Perplexity with user prompt"""
         try:
-            start_time = datetime.utcnow()
+            # Run async processor in sync context
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
             
-            # Get search results
-            search_results = search_data.get('results', [])
-            keywords = search_data.get('keywords', [])
-            source = search_data.get('source', {})
-            
-            if not search_results:
-                logger.warning("No search results to enhance")
-                return {}
-            
-            logger.info(f"Enhancing {len(search_results)} search results from {source.get('name')} using Perplexity AI")
-            
-            # Analyze search results using Perplexity
-            analysis_result = self.content_service.analyze_search_results(
-                search_results, keywords, analysis_prompt
+            result = loop.run_until_complete(
+                self.processor.process_user_prompt(user_prompt, context_data)
             )
             
-            if not analysis_result:
-                logger.error("Failed to get analysis from Perplexity service")
-                return {}
+            loop.close()
             
-            # Enhance individual results
-            enhanced_results = []
-            for result in search_results:
-                enhanced_result = self._enhance_single_result(result, keywords, analysis_result)
-                enhanced_results.append(enhanced_result)
-            
-            # Calculate processing time
-            processing_time = (datetime.utcnow() - start_time).total_seconds()
-            
-            # Create enhanced data structure
-            enhanced_data = {
-                'analysis': analysis_result,
-                'enhanced_results': enhanced_results,
-                'summary': {
-                    'total_results_analyzed': len(search_results),
-                    'enhanced_results_count': len(enhanced_results),
-                    'key_themes': analysis_result.get('key_themes', []),
-                    'relevance_score': analysis_result.get('overall_relevance', 0.0),
-                    'data_quality_score': analysis_result.get('data_quality', 0.0),
-                    'source_name': source.get('name'),
-                    'source_type': source.get('type')
-                },
-                'recommendations': {
-                    'content_extraction_priority': self._prioritize_content_extraction(enhanced_results),
-                    'recommended_extraction_mode': self._recommend_extraction_mode(analysis_result),
-                    'recommended_quality_threshold': self._recommend_quality_threshold(analysis_result)
-                },
-                'metadata': {
-                    'processed_at': datetime.utcnow().isoformat(),
-                    'processing_time': processing_time,
-                    'ai_model': 'perplexity',
-                    'confidence_score': analysis_result.get('confidence', 0.0),
-                    'batch_info': {
-                        'batch_index': search_data.get('batch_index', 0),
-                        'total_batches': search_data.get('total_batches', 1)
-                    }
-                }
-            }
-            
-            return enhanced_data
-            
+            return result
+                
         except Exception as e:
-            logger.error(f"Error enhancing search data: {str(e)}")
-            return {}
-    
-    def _enhance_single_result(self, result: Dict[str, Any], keywords: List[str], 
-                              analysis_result: Dict[str, Any]) -> Dict[str, Any]:
-        """Enhance a single search result"""
-        enhanced = result.copy()
-        
-        # Add AI-generated enhancements
-        enhanced.update({
-            'ai_relevance_score': self._calculate_ai_relevance(result, keywords, analysis_result),
-            'content_priority': self._calculate_content_priority(result, analysis_result),
-            'extraction_recommendation': self._get_extraction_recommendation(result, analysis_result),
-            'key_concepts': self._extract_key_concepts(result, keywords),
-            'enhanced_at': datetime.utcnow().isoformat()
-        })
-        
-        return enhanced
-    
-    def _calculate_ai_relevance(self, result: Dict[str, Any], keywords: List[str], 
-                               analysis_result: Dict[str, Any]) -> float:
-        """Calculate AI-enhanced relevance score"""
-        base_relevance = result.get('relevance_score', 0.5)
-        
-        # Factor in AI analysis
-        theme_match = 0.0
-        key_themes = analysis_result.get('key_themes', [])
-        
-        title = result.get('title', '').lower()
-        snippet = result.get('snippet', '').lower()
-        
-        for theme in key_themes:
-            if theme.lower() in title or theme.lower() in snippet:
-                theme_match += 0.1
-        
-        # Combine scores
-        ai_relevance = min(1.0, base_relevance + theme_match)
-        return round(ai_relevance, 3)
-    
-    def _calculate_content_priority(self, result: Dict[str, Any], 
-                                   analysis_result: Dict[str, Any]) -> str:
-        """Calculate content extraction priority"""
-        relevance = result.get('relevance_score', 0.0)
-        source = result.get('source', '').lower()
-        
-        # High priority sources
-        high_priority_sources = ['fda', 'nih', 'pubmed', 'clinicaltrials', 'who', 'ema']
-        
-        if any(hp_source in source for hp_source in high_priority_sources):
-            return 'high'
-        elif relevance > 0.7:
-            return 'high'
-        elif relevance > 0.4:
-            return 'medium'
-        else:
-            return 'low'
-    
-    def _get_extraction_recommendation(self, result: Dict[str, Any], 
-                                     analysis_result: Dict[str, Any]) -> str:
-        """Get content extraction recommendation"""
-        priority = self._calculate_content_priority(result, analysis_result)
-        
-        if priority == 'high':
-            return 'full'
-        elif priority == 'medium':
-            return 'summary'
-        else:
-            return 'structured'
-    
-    def _extract_key_concepts(self, result: Dict[str, Any], keywords: List[str]) -> List[str]:
-        """Extract key concepts from result"""
-        concepts = []
-        
-        title = result.get('title', '').lower()
-        snippet = result.get('snippet', '').lower()
-        
-        # Add matching keywords
-        for keyword in keywords:
-            if keyword.lower() in title or keyword.lower() in snippet:
-                concepts.append(keyword)
-        
-        # Add some domain-specific concepts
-        pharma_concepts = ['drug', 'medication', 'treatment', 'clinical', 'trial', 'fda', 'approval', 'regulatory']
-        for concept in pharma_concepts:
-            if concept in title or concept in snippet:
-                concepts.append(concept)
-        
-        return list(set(concepts))  # Remove duplicates
-    
-    def _prioritize_content_extraction(self, enhanced_results: List[Dict[str, Any]]) -> List[str]:
-        """Prioritize URLs for content extraction"""
-        # Sort by AI relevance and priority
-        sorted_results = sorted(
-            enhanced_results,
-            key=lambda x: (
-                1 if x.get('content_priority') == 'high' else 
-                0.5 if x.get('content_priority') == 'medium' else 0,
-                x.get('ai_relevance_score', 0)
-            ),
-            reverse=True
-        )
-        
-        return [result.get('url') for result in sorted_results if result.get('url')]
-    
-    def _recommend_extraction_mode(self, analysis_result: Dict[str, Any]) -> str:
-        """Recommend extraction mode based on analysis"""
-        data_quality = analysis_result.get('data_quality', 0.0)
-        
-        if data_quality > 0.8:
-            return 'full'
-        elif data_quality > 0.5:
-            return 'summary'
-        else:
-            return 'structured'
-    
-    def _recommend_quality_threshold(self, analysis_result: Dict[str, Any]) -> float:
-        """Recommend quality threshold based on analysis"""
-        data_quality = analysis_result.get('data_quality', 0.0)
-        
-        if data_quality > 0.8:
-            return 0.9
-        elif data_quality > 0.6:
-            return 0.8
-        else:
-            return 0.7
+            logger.error(f"Error calling Perplexity: {str(e)}")
+            return {
+                'perplexity_response': f"Error: {str(e)}",
+                'success': False,
+                'status': 'error'
+            }

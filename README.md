@@ -139,6 +139,10 @@ S3_BUCKET_NAME=market-intelligence-bucket
 BEDROCK_REGION=us-east-1
 BEDROCK_MODEL_ID=anthropic.claude-3-sonnet-20240229-v1:0
 
+# Perplexity AI Settings
+PERPLEXITY_API_KEY=your-perplexity-api-key-here
+PERPLEXITY_MODE=development  # or 'production' for detailed analysis
+
 # Queue Settings
 QUEUE_POLL_INTERVAL=5
 QUEUE_BATCH_SIZE=10

@@ -23,21 +23,44 @@ class DynamoDBClient:
     """DynamoDB client for queue operations"""
     
     def __init__(self):
-        self.session = boto3.Session(
-            aws_access_key_id=settings.aws_access_key_id,
-            aws_secret_access_key=settings.aws_secret_access_key,
-            region_name=settings.aws_region
-        )
-        
-        # Create DynamoDB resource and client
-        self.dynamodb = self.session.resource(
-            'dynamodb',
-            endpoint_url=settings.dynamodb_endpoint_url
-        )
-        self.client = self.session.client(
-            'dynamodb',
-            endpoint_url=settings.dynamodb_endpoint_url
-        )
+        # For local DynamoDB, use proper dummy credentials that boto3 accepts
+        if settings.dynamodb_endpoint or settings.dynamodb_endpoint_url:
+            # Local DynamoDB - use dummy credentials that boto3 accepts
+            aws_access_key = settings.aws_access_key_id or "local"
+            aws_secret_key = settings.aws_secret_access_key or "local"
+            
+            # Ensure credentials are valid format for boto3
+            if aws_access_key in ["dummy", "test","local"]:
+                aws_access_key = "local"
+            if aws_secret_key in ["dummy", "test","local"]:
+                aws_secret_key = "local"
+                
+            endpoint_url = settings.dynamodb_endpoint or settings.dynamodb_endpoint_url
+            region = settings.dynamodb_region or settings.aws_region
+                
+            self.dynamodb = boto3.resource(
+                'dynamodb',
+                endpoint_url=endpoint_url,
+                aws_access_key_id=aws_access_key,
+                aws_secret_access_key=aws_secret_key,
+                region_name=region
+            )
+            self.client = boto3.client(
+                'dynamodb',
+                endpoint_url=endpoint_url,
+                aws_access_key_id=aws_access_key,
+                aws_secret_access_key=aws_secret_key,
+                region_name=region
+            )
+        else:
+            # AWS DynamoDB - use real credentials
+            self.session = boto3.Session(
+                aws_access_key_id=settings.aws_access_key_id,
+                aws_secret_access_key=settings.aws_secret_access_key,
+                region_name=settings.aws_region
+            )
+            self.dynamodb = self.session.resource('dynamodb')
+            self.client = self.session.client('dynamodb')
         
         # Cache table objects
         self._tables = {}
@@ -186,6 +209,7 @@ class DynamoDBClient:
     def scan_items(self, table_name: str, 
                   filter_expression: Optional[str] = None,
                   expression_attribute_values: Optional[Dict[str, Any]] = None,
+                  expression_attribute_names: Optional[Dict[str, str]] = None,
                   limit: Optional[int] = None) -> List[Dict[str, Any]]:
         """Scan items from a DynamoDB table"""
         try:
@@ -198,6 +222,9 @@ class DynamoDBClient:
             
             if expression_attribute_values:
                 scan_params['ExpressionAttributeValues'] = expression_attribute_values
+            
+            if expression_attribute_names:
+                scan_params['ExpressionAttributeNames'] = expression_attribute_names
             
             if limit:
                 scan_params['Limit'] = limit
@@ -221,10 +248,13 @@ class DynamoDBClient:
         try:
             table = self.get_table(table_name)
             
+            # Process expression attribute values for DynamoDB compatibility
+            processed_values = self._process_item_for_dynamodb(expression_attribute_values)
+            
             table.update_item(
                 Key=key,
                 UpdateExpression=update_expression,
-                ExpressionAttributeValues=expression_attribute_values
+                ExpressionAttributeValues=processed_values
             )
             
             logger.debug(f"Successfully updated item in {table_name}: {key}")
@@ -248,18 +278,22 @@ class DynamoDBClient:
             return False
     
     def _process_item_for_dynamodb(self, item: Dict[str, Any]) -> Dict[str, Any]:
-        """Process item for DynamoDB storage (convert datetime, etc.)"""
+        """Process item for DynamoDB storage (convert datetime, float to Decimal, etc.)"""
         processed = {}
         
         for key, value in item.items():
             if isinstance(value, datetime):
                 processed[key] = value.isoformat()
+            elif isinstance(value, float):
+                # Convert float to Decimal for DynamoDB compatibility
+                processed[key] = Decimal(str(value))
             elif isinstance(value, dict):
                 processed[key] = self._process_item_for_dynamodb(value)
             elif isinstance(value, list):
                 processed[key] = [
                     self._process_item_for_dynamodb(v) if isinstance(v, dict) 
-                    else v.isoformat() if isinstance(v, datetime) 
+                    else v.isoformat() if isinstance(v, datetime)
+                    else Decimal(str(v)) if isinstance(v, float)
                     else v 
                     for v in value
                 ]
@@ -269,7 +303,7 @@ class DynamoDBClient:
         return processed
     
     def _process_item_from_dynamodb(self, item: Dict[str, Any]) -> Dict[str, Any]:
-        """Process item from DynamoDB (convert strings back to datetime, etc.)"""
+        """Process item from DynamoDB (convert strings back to datetime, Decimal to float, etc.)"""
         processed = {}
         
         for key, value in item.items():
@@ -278,11 +312,15 @@ class DynamoDBClient:
                     processed[key] = datetime.fromisoformat(value)
                 except ValueError:
                     processed[key] = value
+            elif isinstance(value, Decimal):
+                # Convert Decimal back to float for application use
+                processed[key] = float(value)
             elif isinstance(value, dict):
                 processed[key] = self._process_item_from_dynamodb(value)
             elif isinstance(value, list):
                 processed[key] = [
                     self._process_item_from_dynamodb(v) if isinstance(v, dict)
+                    else float(v) if isinstance(v, Decimal)
                     else v
                     for v in value
                 ]
@@ -294,33 +332,81 @@ class DynamoDBClient:
     def get_queue_items_by_status(self, table_name: str, status: str, 
                                  limit: Optional[int] = None) -> List[Dict[str, Any]]:
         """Get queue items by status"""
-        return self.scan_items(
-            table_name=table_name,
-            filter_expression='#status = :status',
-            expression_attribute_values={':status': status},
-            limit=limit
-        )
+        try:
+            table = self.get_table(table_name)
+            
+            # First, try to scan all items and filter in Python if the table is small
+            # This avoids the expression attribute name issue when tables are empty
+            scan_params = {}
+            if limit:
+                scan_params['Limit'] = limit * 10  # Get more items to filter
+            
+            response = table.scan(**scan_params)
+            
+            items = []
+            for item in response.get('Items', []):
+                processed_item = self._process_item_from_dynamodb(item)
+                # Filter by status in Python
+                if processed_item.get('status') == status:
+                    items.append(processed_item)
+                    if limit and len(items) >= limit:
+                        break
+            
+            return items
+            
+        except ClientError as e:
+            logger.error(f"Failed to get queue items by status from {table_name}: {str(e)}")
+            return []
     
     def update_item_status(self, table_name: str, pk: str, sk: str, 
                           new_status: str, error_message: Optional[str] = None) -> bool:
         """Update the status of a queue item"""
-        update_expression = "SET #status = :status, updated_at = :updated_at"
-        expression_values = {
-            ':status': new_status,
-            ':updated_at': datetime.utcnow().isoformat()
-        }
-        
-        if error_message:
-            update_expression += ", error_message = :error_message"
-            expression_values[':error_message'] = error_message
-        
-        return self.update_item(
-            table_name=table_name,
-            key={'PK': pk, 'SK': sk},
-            update_expression=update_expression,
-            expression_attribute_values=expression_values
-        )
+        try:
+            table = self.get_table(table_name)
+            
+            update_expression = "SET #status = :status, updated_at = :updated_at"
+            expression_names = {'#status': 'status'}
+            expression_values = {
+                ':status': new_status,
+                ':updated_at': datetime.utcnow().isoformat()
+            }
+            
+            if error_message:
+                update_expression += ", error_message = :error_message"
+                expression_values[':error_message'] = error_message
+            
+            # Process expression values for DynamoDB compatibility
+            processed_values = self._process_item_for_dynamodb(expression_values)
+            
+            table.update_item(
+                Key={'PK': pk, 'SK': sk},
+                UpdateExpression=update_expression,
+                ExpressionAttributeNames=expression_names,
+                ExpressionAttributeValues=processed_values
+            )
+            
+            logger.debug(f"Successfully updated item status in {table_name}: {pk}")
+            return True
+            
+        except ClientError as e:
+            logger.error(f"Failed to update item status in {table_name}: {str(e)}")
+            return False
 
 
-# Global DynamoDB client instance
-dynamodb_client = DynamoDBClient()
+# Global DynamoDB client instance (lazy loaded)
+_dynamodb_client = None
+
+def get_dynamodb_client():
+    """Get or create the global DynamoDB client instance"""
+    global _dynamodb_client
+    if _dynamodb_client is None:
+        _dynamodb_client = DynamoDBClient()
+    return _dynamodb_client
+
+# Create a proxy object that lazy-loads the client
+class LazyDynamoDBClient:
+    def __getattr__(self, name):
+        return getattr(get_dynamodb_client(), name)
+
+# For backward compatibility
+dynamodb_client = LazyDynamoDBClient()

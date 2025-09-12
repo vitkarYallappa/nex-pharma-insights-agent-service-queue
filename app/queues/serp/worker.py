@@ -1,12 +1,11 @@
 from typing import Dict, Any, List
-import asyncio
-import aiohttp
 from datetime import datetime
-from urllib.parse import quote_plus, urlparse
+import asyncio
 
 from app.queues.base_worker import BaseWorker
 from app.database.s3_client import s3_client
 from app.utils.logger import get_logger
+from .processor import SerpProcessor
 
 logger = get_logger(__name__)
 
@@ -16,14 +15,16 @@ class SerpWorker(BaseWorker):
     
     def __init__(self):
         super().__init__("serp")
+        self.processor = SerpProcessor()
     
     def process_item(self, item: Dict[str, Any]) -> bool:
-        """Process a SERP item for a SINGLE source"""
+        """Process a SERP item - simplified workflow without API calls"""
         try:
             payload = item.get('payload', {})
             
+            # Extract basic information from payload
             keywords = payload.get('keywords', [])
-            source = payload.get('source', {})  # Single source now
+            source = payload.get('source', {})
             search_queries = payload.get('search_queries', [])
             
             if not keywords or not source:
@@ -33,15 +34,15 @@ class SerpWorker(BaseWorker):
             source_name = source.get('name', 'Unknown')
             logger.info(f"Processing SERP for source: {source_name} with {len(keywords)} keywords")
             
-            # Execute search queries for this source
-            search_results = self._execute_searches_for_source(search_queries, keywords, source)
-            
-            if not search_results:
-                logger.warning(f"No search results obtained for source: {source_name}")
-                return False
+            # Use real SERP API to get search results
+            search_results = self._get_real_search_results(keywords, source)
             
             # Extract project and request IDs
             project_id, request_id = self._extract_ids_from_pk(item.get('PK', ''))
+            
+            if not project_id or not request_id:
+                logger.error(f"Could not extract project/request IDs from PK: {item.get('PK')}")
+                return False
             
             # Store search results in S3
             s3_key = s3_client.store_serp_data(project_id, request_id, {
@@ -82,6 +83,14 @@ class SerpWorker(BaseWorker):
             
             if success:
                 logger.info(f"Successfully processed SERP for {source_name}, found {len(search_results)} results")
+                
+                # Create updated item for _trigger_next_queues with the new payload
+                updated_item = item.copy()
+                updated_item['payload'] = updated_payload
+                
+                # Manually trigger next queues with updated item
+                self._trigger_next_queues(updated_item)
+                
                 return True
             else:
                 logger.error(f"Failed to update SERP payload for {source_name}")
@@ -91,57 +100,121 @@ class SerpWorker(BaseWorker):
             logger.error(f"Error processing SERP item: {str(e)}")
             return False
     
+    def _process_item(self, item: Dict[str, Any]):
+        """Override base worker's _process_item to handle our custom flow"""
+        pk = item.get('PK')
+        sk = item.get('SK')
+        
+        if not pk or not sk:
+            logger.error(f"Invalid item keys: PK={pk}, SK={sk}")
+            return
+        
+        try:
+            # Update status to processing
+            from app.models.queue_models import QueueStatus
+            self._update_item_status(pk, sk, QueueStatus.PROCESSING)
+            
+            # Process the item (this calls our overridden process_item method)
+            success = self.process_item(item)
+            
+            if success:
+                # Update status to completed
+                self._update_item_status(pk, sk, QueueStatus.COMPLETED)
+                logger.info(f"Successfully processed item: {pk}")
+                # Note: _trigger_next_queues is called inside process_item with updated data
+            else:
+                # Handle failure
+                self._handle_processing_failure(item)
+                
+        except Exception as e:
+            logger.error(f"Error processing item {pk}: {str(e)}")
+            self._handle_processing_error(item, str(e))
+    
     def prepare_next_queue_payload(self, next_queue: str, completed_item: Dict[str, Any]) -> Dict[str, Any]:
-        """Prepare payload for Perplexity queue - NOT USED, we override _create_next_queue_item"""
-        # This won't be used since we override _create_next_queue_item
+        """Prepare payload for next queue - NOT USED since we override _trigger_next_queues"""
+        # This method won't be used since we override _trigger_next_queues
         return {}
     
-    def _create_next_queue_item(self, next_queue: str, project_id: str, 
-                               request_id: str, completed_item: Dict[str, Any]):
-        """Override to create multiple Perplexity items based on URLs found"""
-        if next_queue != "perplexity":
-            return super()._create_next_queue_item(next_queue, project_id, request_id, completed_item)
-        
-        # For Perplexity queue, create one item per URL found (or group of URLs)
+    def _trigger_next_queues(self, completed_item: Dict[str, Any]):
+        """Override to create multiple Perplexity items - one for each URL (with limit)"""
         from app.models.queue_models import QueueItemFactory
         from app.database.dynamodb_client import dynamodb_client
-        from config import QUEUE_TABLES
+        from config import QUEUE_TABLES, QUEUE_WORKFLOW, QUEUE_PROCESSING_LIMITS
+        
+        logger.info(f"DEBUG: _trigger_next_queues called with item keys: {list(completed_item.keys())}")
+        
+        next_queues = QUEUE_WORKFLOW.get(self.queue_name, [])
+        
+        if not next_queues or 'perplexity' not in next_queues:
+            logger.debug(f"No perplexity queue for {self.queue_name}")
+            return
+        
+        project_id, request_id = self._extract_ids_from_pk(completed_item.get('PK', ''))
+        
+        if not project_id or not request_id:
+            logger.error(f"Could not extract project/request IDs from PK: {completed_item.get('PK')}")
+            return
         
         payload = completed_item.get('payload', {})
+        logger.info(f"DEBUG: Payload keys: {list(payload.keys())}")
+        
         search_results = payload.get('search_results', [])
         source = payload.get('source', {})
         keywords = payload.get('keywords', [])
         
-        # Get URLs from search results
-        urls = [result.get('url') for result in search_results if result.get('url')]
+        logger.info(f"DEBUG: Found {len(search_results)} search results, source: {source.get('name', 'Unknown')}, keywords: {len(keywords)}")
         
-        if not urls:
-            logger.warning(f"No URLs found in SERP results for source: {source.get('name')}")
+        # Get URLs from search results
+        urls_with_data = []
+        for result in search_results:
+            url = result.get('url')
+            if url:
+                urls_with_data.append({
+                    'url': url,
+                    'title': result.get('title', ''),
+                    'snippet': result.get('snippet', ''),
+                    'source': result.get('source', source.get('name', '')),
+                    'relevance_score': result.get('relevance_score', 0.5),
+                    'position': result.get('position', 999)  # Lower position = better ranking
+                })
+        
+        if not urls_with_data:
+            logger.warning("No URLs found in search results, skipping Perplexity queue creation")
+            logger.info(f"DEBUG: Search results structure: {search_results[:2] if search_results else 'Empty'}")
             return
         
-        # Group URLs into batches (e.g., 3 URLs per Perplexity item)
-        batch_size = 3
-        url_batches = [urls[i:i + batch_size] for i in range(0, len(urls), batch_size)]
+        # Apply URL limit from configuration
+        max_urls = QUEUE_PROCESSING_LIMITS.get('max_perplexity_urls_per_serp', 1)
         
-        logger.info(f"Creating {len(url_batches)} Perplexity queue items for {len(urls)} URLs from source: {source.get('name')}")
+        if len(urls_with_data) > max_urls:
+            logger.info(f"Found {len(urls_with_data)} URLs, limiting to top {max_urls} for Perplexity processing")
+            # Select best URLs using smart selection logic
+            selected_urls = self._select_best_urls(urls_with_data, max_urls)
+        else:
+            selected_urls = urls_with_data
         
-        for batch_index, url_batch in enumerate(url_batches):
+        logger.info(f"Creating {len(selected_urls)} Perplexity queue items (limit: {max_urls})")
+        
+        # Create one Perplexity queue item for each selected URL
+        for i, url_data in enumerate(selected_urls):
             try:
-                # Get search results for this batch of URLs
-                batch_results = [result for result in search_results if result.get('url') in url_batch]
+                # Create user prompt for this specific URL
+                user_prompt = self._create_url_analysis_prompt(url_data, keywords, source)
                 
-                # Create Perplexity payload for this batch
+                # Create payload for this URL
                 perplexity_payload = {
-                    'search_data': {
-                        'results': batch_results,
-                        'source': source,
-                        'keywords': keywords,
-                        'batch_index': batch_index,
-                        'total_batches': len(url_batches),
-                        'urls': url_batch
+                    'user_prompt': user_prompt,
+                    'analysis_prompt': user_prompt,  # Backward compatibility
+                    'url_data': url_data,
+                    'source_info': {
+                        'name': source.get('name', ''),
+                        'type': source.get('type', ''),
+                        'keywords': keywords
                     },
-                    'analysis_prompt': self._create_analysis_prompt_for_batch(keywords, source, batch_results),
-                    'enhanced_data': {}
+                    'url_index': i + 1,
+                    'total_urls': len(selected_urls),
+                    'total_found_urls': len(urls_with_data),  # Track how many were originally found
+                    'url_limit_applied': len(urls_with_data) > max_urls
                 }
                 
                 # Create queue item
@@ -155,9 +228,11 @@ class SerpWorker(BaseWorker):
                     metadata={
                         **completed_item.get('metadata', {}),
                         'source_name': source.get('name', ''),
-                        'batch_index': batch_index,
-                        'total_batches': len(url_batches),
-                        'urls_count': len(url_batch),
+                        'url': url_data['url'],
+                        'url_index': i + 1,
+                        'total_urls': len(selected_urls),
+                        'total_found_urls': len(urls_with_data),
+                        'relevance_score': url_data.get('relevance_score', 0.5),
                         'created_from': 'serp'
                     }
                 )
@@ -167,183 +242,57 @@ class SerpWorker(BaseWorker):
                 success = dynamodb_client.put_item(table_name, queue_item.dict())
                 
                 if success:
-                    logger.info(f"Created Perplexity queue item {batch_index+1}/{len(url_batches)} with {len(url_batch)} URLs")
+                    logger.info(f"Created Perplexity queue item {i+1}/{len(selected_urls)} for URL: {url_data['url'][:50]}... (score: {url_data.get('relevance_score', 0.5):.2f})")
                 else:
-                    logger.error(f"Failed to create Perplexity queue item for batch {batch_index+1}")
+                    logger.error(f"Failed to create Perplexity queue item {i+1}/{len(selected_urls)}")
                     
             except Exception as e:
-                logger.error(f"Failed to create Perplexity item for batch {batch_index+1}: {str(e)}")
+                logger.error(f"Failed to create Perplexity item {i+1}/{len(selected_urls)}: {str(e)}")
         
-        logger.info(f"Completed creating {len(url_batches)} Perplexity queue items from SERP results")
+        logger.info(f"Completed creating {len(selected_urls)} Perplexity queue items (found {len(urls_with_data)} total URLs)")
     
-    def _execute_searches_for_source(self, search_queries: List[str], keywords: List[str], 
-                                   source: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Execute search queries for a single source"""
+    def _create_url_analysis_prompt(self, url_data: Dict[str, Any], keywords: List[str], source: Dict[str, Any]) -> str:
+        """Create analysis prompt for a specific URL using simplified prompt system"""
+        from app.queues.perplexity.prompt_config import PromptManager
+        
+        # Use the simplified prompt manager
+        return PromptManager.get_prompt(url_data, keywords)
+    
+    def _get_real_search_results(self, keywords: List[str], source: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Get real search results using SERP API"""
         try:
-            # Use asyncio to run async search
+            # Run async processor in sync context
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
-            results = loop.run_until_complete(self._async_search_source(search_queries, keywords, source))
+            
+            result = loop.run_until_complete(
+                self.processor.process_search_data(keywords, source)
+            )
+            
             loop.close()
             
-            return results
-            
+            if result['status'] == 'success':
+                return result['search_results']
+            else:
+                logger.error(f"SERP API processing failed: {result.get('processing_metadata', {}).get('error', 'Unknown error')}")
+                return []
+                
         except Exception as e:
-            logger.error(f"Error executing searches for source {source.get('name')}: {str(e)}")
+            logger.error(f"Error getting real search results: {str(e)}")
             return []
-    
-    async def _async_search_source(self, search_queries: List[str], keywords: List[str], 
-                                 source: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Async search execution for single source"""
-        all_results = []
+
+    def _select_best_urls(self, urls_with_data: List[Dict[str, Any]], max_urls: int) -> List[Dict[str, Any]]:
+        """Select the best URLs for Perplexity processing - simple relevance-based selection"""
         
-        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30)) as session:
-            tasks = []
-            
-            # Create search tasks for this source
-            for query in search_queries:
-                tasks.append(self._search_query_for_source(session, query, keywords, source))
-            
-            # Execute searches concurrently
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-            
-            # Collect valid results
-            for result in results:
-                if isinstance(result, list):
-                    all_results.extend(result)
-                elif isinstance(result, Exception):
-                    logger.warning(f"Search task failed for {source.get('name')}: {str(result)}")
+        # Sort by relevance score (highest first) and take top URLs
+        sorted_urls = sorted(urls_with_data, key=lambda x: x.get('relevance_score', 0.0), reverse=True)
+        selected = sorted_urls[:max_urls]
         
-        # Remove duplicates and limit results
-        unique_results = self._deduplicate_results(all_results)
-        return unique_results[:20]  # Limit to 20 results per source
-    
-    async def _search_query_for_source(self, session: aiohttp.ClientSession, query: str, 
-                                     keywords: List[str], source: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Search a single query for a specific source"""
-        results = []
+        logger.info(f"URL Selection Summary:")
+        for i, url in enumerate(selected):
+            logger.info(f"  {i+1}. Relevance: {url.get('relevance_score', 0.0):.2f} - {url['url'][:60]}...")
         
-        try:
-            source_url = source.get('url', '')
-            source_name = source.get('name', '')
-            source_type = source.get('type', '')
-            
-            # Generate realistic URLs based on source
-            base_urls = self._generate_source_urls(source, query, keywords)
-            
-            for i, url in enumerate(base_urls):
-                result = {
-                    'title': f"{query} - {source_name} Result {i+1}",
-                    'url': url,
-                    'snippet': f"Information about {query} from {source_name}. {source_type} source providing detailed insights.",
-                    'source': source_name,
-                    'source_type': source_type,
-                    'relevance_score': self._calculate_relevance(query, keywords),
-                    'found_at': datetime.utcnow().isoformat(),
-                    'query_used': query
-                }
-                results.append(result)
-            
-            return results
-            
-        except Exception as e:
-            logger.error(f"Error searching query '{query}' for source {source.get('name')}: {str(e)}")
-            return []
-    
-    def _generate_source_urls(self, source: Dict[str, Any], query: str, keywords: List[str]) -> List[str]:
-        """Generate realistic URLs for a source"""
-        source_url = source.get('url', '')
-        source_name = source.get('name', '').lower()
+        if len(urls_with_data) > max_urls:
+            logger.info(f"Skipped {len(urls_with_data) - max_urls} lower-relevance URLs")
         
-        urls = []
-        
-        # Generate URLs based on source type
-        if 'fda' in source_name:
-            urls = [
-                f"{source_url}/drugs/drug-approvals-and-databases/{quote_plus(query)}",
-                f"{source_url}/safety/recalls-market-withdrawals-safety-alerts/{quote_plus(query)}",
-                f"{source_url}/regulatory-information/search-fda-guidance-documents/{quote_plus(query)}"
-            ]
-        elif 'ema' in source_name:
-            urls = [
-                f"{source_url}/en/medicines/human/EPAR/{quote_plus(query)}",
-                f"{source_url}/en/human-regulatory/marketing-authorisation/{quote_plus(query)}",
-                f"{source_url}/en/news-events/news/{quote_plus(query)}"
-            ]
-        elif 'pubmed' in source_name:
-            urls = [
-                f"{source_url}/?term={quote_plus(query)}+AND+clinical+trial",
-                f"{source_url}/?term={quote_plus(query)}+AND+systematic+review",
-                f"{source_url}/?term={quote_plus(query)}+AND+meta+analysis"
-            ]
-        else:
-            # Generic URLs
-            for i in range(3):
-                urls.append(f"{source_url}/research/{quote_plus(query)}/{i+1}")
-        
-        return urls[:5]  # Limit to 5 URLs per query
-    
-    def _calculate_relevance(self, query: str, keywords: List[str]) -> float:
-        """Calculate relevance score for a search result"""
-        query_lower = query.lower()
-        matches = sum(1 for keyword in keywords if keyword.lower() in query_lower)
-        
-        if not keywords:
-            return 0.5
-        
-        relevance = matches / len(keywords)
-        return min(1.0, max(0.1, relevance))
-    
-    def _deduplicate_results(self, results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Remove duplicate search results based on URL"""
-        seen_urls = set()
-        unique_results = []
-        
-        for result in results:
-            url = result.get('url', '')
-            if url and url not in seen_urls:
-                seen_urls.add(url)
-                unique_results.append(result)
-        
-        # Sort by relevance score
-        unique_results.sort(key=lambda x: x.get('relevance_score', 0), reverse=True)
-        
-        return unique_results
-    
-    def _create_analysis_prompt_for_batch(self, keywords: List[str], source: Dict[str, Any], 
-                                        batch_results: List[Dict[str, Any]]) -> str:
-        """Create analysis prompt for a batch of URLs from a source"""
-        source_name = source.get('name', '')
-        source_type = source.get('type', '')
-        
-        prompt = f"""
-        Analyze the following search results from {source_name} ({source_type} source):
-        
-        Keywords: {', '.join(keywords)}
-        Number of URLs in batch: {len(batch_results)}
-        
-        Search Results:
-        {self._format_results_for_prompt(batch_results)}
-        
-        Please provide:
-        1. Key findings specific to {source_name}
-        2. Relevance assessment for {source_type} information
-        3. Data quality evaluation for this source
-        4. Specific insights from this batch of URLs
-        5. Recommendations for further analysis
-        
-        Focus on pharmaceutical and healthcare market intelligence aspects relevant to {source_type} sources.
-        """
-        
-        return prompt.strip()
-    
-    def _format_results_for_prompt(self, results: List[Dict[str, Any]]) -> str:
-        """Format search results for AI prompt"""
-        formatted = []
-        for i, result in enumerate(results[:5]):  # Limit to first 5 for prompt
-            formatted.append(f"{i+1}. {result.get('title', 'No title')}")
-            formatted.append(f"   URL: {result.get('url', 'No URL')}")
-            formatted.append(f"   Snippet: {result.get('snippet', 'No snippet')}")
-            formatted.append("")
-        
-        return "\n".join(formatted)
+        return selected

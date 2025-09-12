@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 
-from config import settings, QUEUE_TABLES, QUEUE_WORKFLOW
+from config import settings, QUEUE_TABLES, QUEUE_WORKFLOW, QUEUE_PROCESSING_LIMITS
 from app.database.dynamodb_client import dynamodb_client
 from app.database.s3_client import s3_client
 from app.models.queue_models import QueueStatus
@@ -49,6 +49,12 @@ class BaseWorker(ABC):
                             break
                         
                         try:
+                            # Add configurable delay before processing each task
+                            task_delay = QUEUE_PROCESSING_LIMITS.get('task_delay_seconds', 3)
+                            if task_delay > 0:
+                                logger.info(f"Waiting {task_delay} seconds before processing item {item.get('PK', 'unknown')}")
+                                time.sleep(task_delay)
+                            
                             self._process_item(item)
                         except Exception as e:
                             logger.error(f"Error processing item {item.get('PK', 'unknown')}: {str(e)}")
@@ -86,6 +92,7 @@ class BaseWorker(ABC):
                 table_name=self.table_name,
                 filter_expression='#status = :status',
                 expression_attribute_values={':status': QueueStatus.PENDING.value},
+                expression_attribute_names={'#status': 'status'},
                 limit=self.batch_size
             )
             return items

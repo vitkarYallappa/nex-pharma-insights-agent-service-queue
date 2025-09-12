@@ -2,7 +2,6 @@ from typing import List, Dict, Any
 from .request_acceptance_migration import RequestAcceptanceMigration
 from .serp_migration import SerpMigration
 from .perplexity_migration import PerplexityMigration
-from .fetch_content_migration import FetchContentMigration
 from .insight_migration import InsightMigration
 from .implication_migration import ImplicationMigration
 from app.utils.logger import get_logger
@@ -16,7 +15,6 @@ class MigrationManager:
             'request_acceptance': RequestAcceptanceMigration(),
             'serp': SerpMigration(),
             'perplexity': PerplexityMigration(),
-            'fetch_content': FetchContentMigration(),
             'insight': InsightMigration(),
             'implication': ImplicationMigration()
         }
