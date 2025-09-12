@@ -105,12 +105,22 @@ class ImplicationQueue(BaseQueueModel):
         super().__init__(**data)
 
 
+class RelevanceCheckQueue(BaseQueueModel):
+    """Model for relevance check queue items"""
+    
+    def __init__(self, project_id: str, project_request_id: str, **data):
+        data['PK'] = f"{project_id}#{project_request_id}"
+        data['SK'] = f"relevance_check#{int(datetime.utcnow().timestamp())}"
+        super().__init__(**data)
+
+
 # Queue model mapping for factory pattern
 QUEUE_MODELS = {
     "request_acceptance": RequestAcceptanceQueue,
     "serp": SerpQueue,
     "perplexity": PerplexityQueue,
     "fetch_content": FetchContentQueue,
+    "relevance_check": RelevanceCheckQueue,
     "insight": InsightQueue,
     "implication": ImplicationQueue
 }

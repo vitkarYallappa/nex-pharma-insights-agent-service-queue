@@ -13,7 +13,6 @@ class InsightPromptConfig:
     
     URL: {url}
     Title: {title}
-    User Query: {user_prompt}
     
     Research Data:
     {perplexity_response}
@@ -23,7 +22,23 @@ class InsightPromptConfig:
     2. Main opportunities (2-3 bullet points)
     3. Competitive landscape (brief overview)
     
-    Keep it concise for development testing.
+    
+    Please provide the response strictly in the following HTML format:
+
+<div>
+  <p><strong>Key market trend:</strong></p>
+  <p>[1–2 sentences describing the key market trend]</p>
+
+  <p><strong>Main opportunities:</strong></p>
+  <ul>
+    <li>[Opportunity 1]</li>
+    <li>[Opportunity 2]</li>
+    <li>[Opportunity 3]</li>
+  </ul>
+
+  <p><strong>Competitive landscape:</strong></p>
+  <p>[Brief overview of the competitive landscape]</p>
+</div>
     """
     
     # Production prompt - comprehensive for real analysis

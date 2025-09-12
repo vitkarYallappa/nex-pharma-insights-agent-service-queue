@@ -3,6 +3,7 @@ from datetime import datetime
 
 from .bedrock_service import RelevanceCheckBedrockService
 from .prompt_config import RelevanceCheckPromptManager
+from .db_operations_service import relevance_check_db_operations_service
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -16,11 +17,27 @@ class RelevanceCheckProcessor:
         self.bedrock_service = RelevanceCheckBedrockService()
     
     async def check_relevance(self, perplexity_response: str, url_data: Dict[str, Any], 
-                            user_prompt: str = "", content_id: str = "") -> Dict[str, Any]:
+                            user_prompt: str = "", content_id: str = "", 
+                            project_id: str = "", request_id: str = "") -> Dict[str, Any]:
         """Check content relevance from Perplexity response using Bedrock"""
         try:
             logger.info(f"Checking relevance for content ID: {content_id}")
             
+            # Fetch content from request table by project_id and request_id
+            request_content = relevance_check_db_operations_service.fetch_request_content(
+                project_id=project_id, 
+                request_id=request_id
+            )
+            
+            # Use description from request as user_prompt if available
+            if request_content.get('success') and request_content.get('description'):
+                user_prompt = request_content.get('description', '')
+                logger.info(f"Using request description as user prompt for content ID: {content_id}")
+            elif not user_prompt:
+                # Fallback if no description found
+                user_prompt = "Analyze the relevance of this content for pharmaceutical market intelligence"
+                logger.warning(f"No description found in request, using fallback prompt for content ID: {content_id}")
+
             # Prepare relevance check prompt using prompt manager
             relevance_prompt = RelevanceCheckPromptManager.get_prompt(
                 perplexity_response=perplexity_response,
@@ -43,7 +60,10 @@ class RelevanceCheckProcessor:
                     "url": url_data.get('url', ''),
                     "prompt_length": len(relevance_prompt),
                     "prompt_mode": RelevanceCheckPromptManager.get_current_mode(),
-                    "bedrock_model": result.get("model_used", "unknown")
+                    "bedrock_model": result.get("model_used", "unknown"),
+                    "request_fetch_success": request_content.get('success', False),
+                    "user_prompt_source": "request_description" if request_content.get('success') else "fallback",
+                    "user_prompt_length": len(user_prompt)
                 },
                 "status": "success" if result.get("success") else "error"
             }

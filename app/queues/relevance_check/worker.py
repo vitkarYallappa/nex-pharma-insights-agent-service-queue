@@ -51,7 +51,9 @@ class RelevanceCheckWorker(BaseWorker):
                 perplexity_response=perplexity_response,
                 url_data=url_data,
                 user_prompt=payload.get('user_prompt', ''),
-                content_id=content_id
+                content_id=content_id,
+                project_id=project_id,
+                request_id=request_id
             )
             
             if not relevance_result or not relevance_result.get('success', False):

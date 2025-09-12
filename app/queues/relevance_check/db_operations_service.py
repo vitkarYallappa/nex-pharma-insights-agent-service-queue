@@ -114,11 +114,19 @@ class RelevanceCheckDBOperationsService:
             # Calculate confidence score based on processing quality
             confidence_score = self._calculate_confidence_score(relevance_data)
             
+            # Extract relevance score from analysis
+            relevance_score = self._extract_relevance_score(relevance_response)
+            
+            # Determine if content is relevant based on score and analysis
+            is_relevant = self._determine_is_relevant(relevance_response, relevance_score)
+            
             content_relevance_item = {
                 'pk': relevance_pk,
                 'url_id': content_id,  # Using content_id as url_id for linking
                 'content_id': content_id,
                 'relevance_text': relevance_response,
+                'relevance_score': relevance_score,
+                'is_relevant': is_relevant,
                 'relevance_content_file_path': relevance_content_file_path,
                 'relevance_category': relevance_category,
                 'confidence_score': confidence_score,
@@ -133,13 +141,15 @@ class RelevanceCheckDBOperationsService:
             success = dynamodb_client.put_item(self.content_relevance_table, content_relevance_item)
             
             if success:
-                logger.info(f"✅ RELEVANCE DB STORED - Content ID: {content_id} | Stored relevance item: {relevance_pk}")
+                logger.info(f"✅ RELEVANCE DB STORED - Content ID: {content_id} | Stored relevance item: {relevance_pk} | Score: {relevance_score:.2f} | Relevant: {is_relevant}")
                 return {
                     'success': True,
                     'table_name': self.content_relevance_table,
                     'item_key': relevance_pk,
                     'content_id': content_id,
                     'relevance_category': relevance_category,
+                    'relevance_score': relevance_score,
+                    'is_relevant': is_relevant,
                     'confidence_score': confidence_score,
                     'message': 'Content relevance data stored successfully'
                 }
@@ -224,6 +234,183 @@ class RelevanceCheckDBOperationsService:
             
         except Exception:
             return 0.5  # Default medium confidence
+    
+    def _extract_relevance_score(self, relevance_response: str) -> float:
+        """Extract relevance score from Bedrock response"""
+        try:
+            if not relevance_response:
+                return 0.0
+            
+            analysis_lower = relevance_response.lower()
+            
+            # Look for explicit score patterns
+            import re
+            
+            # Pattern 1: "relevance score: 85/100" or "score: 85"
+            score_patterns = [
+                r'relevance score[:\s]*(\d+)(?:/100)?',
+                r'score[:\s]*(\d+)(?:/100)?',
+                r'(\d+)/100',
+                r'(\d+)%'
+            ]
+            
+            for pattern in score_patterns:
+                match = re.search(pattern, analysis_lower)
+                if match:
+                    score = int(match.group(1))
+                    return min(1.0, score / 100.0)  # Convert to 0.0-1.0 range
+            
+            # Pattern 2: Look for decimal scores like "0.85" or "0.9"
+            decimal_match = re.search(r'(?:score|relevance)[:\s]*([0-1]\.\d+)', analysis_lower)
+            if decimal_match:
+                return float(decimal_match.group(1))
+            
+            # Fallback: Analyze text for relevance indicators
+            if any(term in analysis_lower for term in ['highly relevant', 'very relevant', 'extremely relevant']):
+                return 0.9
+            elif any(term in analysis_lower for term in ['relevant', 'good match', 'aligns well']):
+                return 0.7
+            elif any(term in analysis_lower for term in ['somewhat relevant', 'partially relevant']):
+                return 0.5
+            elif any(term in analysis_lower for term in ['low relevance', 'limited relevance']):
+                return 0.3
+            elif any(term in analysis_lower for term in ['not relevant', 'irrelevant', 'no relevance']):
+                return 0.1
+            
+            return 0.5  # Default medium relevance
+            
+        except Exception:
+            return 0.5  # Default medium relevance
+    
+    def _determine_is_relevant(self, relevance_response: str, relevance_score: float) -> bool:
+        """Determine if content is relevant based on score and analysis"""
+        try:
+            if not relevance_response:
+                return False
+            
+            # Primary check: Use relevance score
+            if relevance_score >= 0.6:  # 60% threshold for relevance
+                return True
+            
+            # Secondary check: Look for explicit relevance decisions
+            analysis_lower = relevance_response.lower()
+            
+            # Explicit "Yes" decisions
+            if any(phrase in analysis_lower for phrase in [
+                'relevance decision: yes',
+                'relevant: yes',
+                'is relevant: yes',
+                'decision: relevant'
+            ]):
+                return True
+            
+            # Explicit "No" decisions
+            if any(phrase in analysis_lower for phrase in [
+                'relevance decision: no',
+                'relevant: no',
+                'is relevant: no',
+                'decision: not relevant',
+                'decision: irrelevant'
+            ]):
+                return False
+            
+            # Fallback to score-based decision
+            return relevance_score >= 0.5
+            
+        except Exception:
+            return relevance_score >= 0.5 if relevance_score else False
+
+    def fetch_request_content(self, project_id: str, request_id: str) -> Dict[str, Any]:
+        """
+        Fetch request content from request-acceptance table by project_id and request_id
+        
+        Args:
+            project_id: Project identifier
+            request_id: Request identifier
+            
+        Returns:
+            Dict with request data including description/user_prompt
+        """
+        try:
+            logger.info(f"Fetching request content for project_id: {project_id}, request_id: {request_id}")
+            
+            # Construct the partition key (format: project_id#request_id)
+            pk = f"{project_id}#{request_id}"
+            
+            # Query the requests table
+            request_table = "requests-local"
+            
+            # Use scan with filter since we need to find by PK pattern
+            # If the table has both PK and SK, we need to scan with filter
+            items = dynamodb_client.scan_items(
+                table_name=request_table,
+                filter_expression="project_id = :pk",
+                expression_attribute_values={":pk": pk},
+                limit=10
+            )
+            
+            if not items:
+                logger.warning(f"No request found for project_id: {project_id}, request_id: {request_id}")
+                return {
+                    'success': False,
+                    'error': 'Request not found',
+                    'description': '',
+                    'title': ''
+                }
+            
+            # Get the most recent item (in case there are multiple)
+            latest_item = max(items, key=lambda x: x.get('created_at', ''))
+            
+            # Extract original request from payload
+            payload = latest_item.get('payload', {})
+            original_request = payload.get('original_request', {})
+            
+            # Extract description from the request config or metadata
+            # Based on the user's mention, we need to look for description field
+            description = ""
+            title = ""
+            
+            # Check if description exists in the original request
+            if 'description' in original_request:
+                description = original_request.get('description', '')
+            elif 'title' in original_request:
+                title = original_request.get('title', '')
+                description = original_request.get('description', '')
+            else:
+                # Fallback: use keywords as description if no explicit description
+                config = original_request.get('config', {})
+                keywords = config.get('keywords', [])
+                if keywords:
+                    description = f"Market intelligence request for: {', '.join(keywords)}"
+                else:
+                    description = "Market intelligence analysis request"
+            
+            logger.info(f"✅ REQUEST CONTENT FETCHED - Project ID: {project_id} | Request ID: {request_id} | Description length: {len(description)}")
+            
+            return {
+                'success': True,
+                'pk': latest_item.get('PK', ''),
+                'project_id': project_id,
+                'request_id': request_id,
+                'title': title,
+                'description': description,
+                'priority': latest_item.get('priority', 'medium'),
+                'status': latest_item.get('status', 'pending'),
+                'created_at': latest_item.get('created_at', ''),
+                'original_request': original_request,
+                'user_id': latest_item.get('metadata', {}).get('user_id', '')
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ REQUEST FETCH ERROR - Project ID: {project_id}, Request ID: {request_id} | Error: {str(e)}")
+            return {
+                'success': False,
+                'error': str(e),
+                'description': '',
+                'title': '',
+                'project_id': project_id,
+                'request_id': request_id
+            }
 
 
 # Global service instance

@@ -201,8 +201,9 @@ class PerplexityWorker(BaseWorker):
         logger.info(f"DEBUG: URL data: {url_data.get('url', 'No URL')[:50]}..., has perplexity_response: {len(perplexity_response) > 0}")
         
         # Create relevance_check, insight and implication queue items for this URL
-        next_queues = ['insight', 'implication']
-        
+        # next_queues = ['insight', 'implication']
+        #relevance_check
+        next_queues = ['relevance_check','insight', 'implication']
         logger.info(f"Creating relevance_check + insight + implication queue items for URL {url_index}/{total_urls}")
         
         for queue_name in next_queues:
