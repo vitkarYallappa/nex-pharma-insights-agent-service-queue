@@ -22,6 +22,7 @@ class PerplexityDBOperationsService:
         self.content_repository_table = "content_repository-local"
         self.content_summary_table = "content_summary-local"
         self.content_url_mapping_table = "content_url_mapping-local"
+        self.content_repository_metadata_table = "content_repository_metadata-local"
     
     def process_perplexity_completion(self, perplexity_data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -52,13 +53,14 @@ class PerplexityDBOperationsService:
                 'content_repository_result': self._store_content_repository(perplexity_data, shared_uuid),
                 'content_summary_result': self._store_content_summary(perplexity_data, shared_uuid),
                 'content_url_mapping_result': self._store_content_url_mapping(perplexity_data, shared_uuid),
+                'content_metadata_result': self._store_content_metadata(perplexity_data, shared_uuid),
                 'content_id': str(shared_uuid),  # Include content ID for next queues
                 'processing_metadata': {
                     'processed_at': datetime.utcnow().isoformat(),
                     'service': self.service_name,
                     'project_id': project_id,
                     'request_id': request_id,
-                    'tables_processed': 3,
+                    'tables_processed': 4,
                     'content_id': str(shared_uuid)
                 }
             }
@@ -91,11 +93,11 @@ class PerplexityDBOperationsService:
             project_id = perplexity_data.get('project_id')
             request_id = perplexity_data.get('request_id')
             url_data = perplexity_data.get('url_data', {})
-            
+
             # Create content repository item matching ContentRepositoryModel structure
             now = datetime.utcnow().isoformat()
             content_hash = str(hash(perplexity_data.get('perplexity_response', '')))
-            
+
             content_item = {
                 'pk': str(shared_uuid),
                 'request_id': request_id,
@@ -345,6 +347,52 @@ class PerplexityDBOperationsService:
             return domain.lower()
         except Exception:
             return "unknown"
+
+    def _store_content_metadata(self, perplexity_data: Dict[str, Any], shared_uuid: uuid.UUID) -> Dict[str, Any]:
+        """Store metadata in content_repository_metadata-local table"""
+        try:
+            project_id = perplexity_data.get('project_id')
+            request_id = perplexity_data.get('request_id')
+            now = datetime.utcnow().isoformat()
+
+            # Create metadata items for publish_date and source_category
+
+            # Publish date metadata
+            metadata_items={
+                    'pk': str(uuid.uuid4()),
+                    'content_id': str(shared_uuid),
+                    'request_id': request_id,
+                    'project_id': project_id,
+                    'metadata_type': str(perplexity_data.get('source_category')),
+                    'metadata_key': 'Non_relevant',
+                    'metadata_value': str(perplexity_data.get('publish_date')),
+                    'data_type': 'date',
+                    'is_searchable': True,
+                    'created_at': now,
+                    'updated_at': now
+                }
+
+            # Store in DynamoDB
+            success = dynamodb_client.put_item(self.content_url_mapping_table, metadata_items)
+
+            if success:
+                logger.info(f"Stored content metadata item: {metadata_items['pk']}")
+                return {
+                    'success': True,
+                    'table_name': self.content_url_mapping_table,
+                    'item_key': metadata_items['pk'],
+                    'message': 'Content metadata stored successfully'
+                }
+            else:
+                raise Exception("Failed to store item in DynamoDB")
+
+        except Exception as e:
+            logger.error(f"Error storing content metadata: {str(e)}")
+            return {
+                'success': False,
+                'table_name': self.content_repository_metadata_table,
+                'error': str(e)
+            }
 
 
 # Global service instance

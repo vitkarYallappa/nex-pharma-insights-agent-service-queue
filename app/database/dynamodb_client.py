@@ -226,14 +226,35 @@ class DynamoDBClient:
             if expression_attribute_names:
                 scan_params['ExpressionAttributeNames'] = expression_attribute_names
             
-            if limit:
-                scan_params['Limit'] = limit
-            
-            response = table.scan(**scan_params)
-            
-            items = []
-            for item in response.get('Items', []):
-                items.append(self._process_item_from_dynamodb(item))
+            # DynamoDB Limit applies to items examined, not filtered results
+            # When using filters, we need to scan without limit and apply limit in code
+            if filter_expression and limit:
+                # Scan without limit when filters are present
+                all_items = []
+                response = table.scan(**scan_params)
+                all_items.extend(response.get('Items', []))
+                
+                # Handle pagination to get all matching items
+                while 'LastEvaluatedKey' in response and len(all_items) < limit * 10:  # Reasonable upper bound
+                    scan_params['ExclusiveStartKey'] = response['LastEvaluatedKey']
+                    response = table.scan(**scan_params)
+                    all_items.extend(response.get('Items', []))
+                
+                # Apply limit in application code after processing
+                items = []
+                for item in all_items:
+                    items.append(self._process_item_from_dynamodb(item))
+                    if len(items) >= limit:
+                        break
+            else:
+                # No filters or no limit - use DynamoDB limit directly
+                if limit and not filter_expression:
+                    scan_params['Limit'] = limit
+                
+                response = table.scan(**scan_params)
+                items = []
+                for item in response.get('Items', []):
+                    items.append(self._process_item_from_dynamodb(item))
             
             return items
             

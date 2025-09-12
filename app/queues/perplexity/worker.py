@@ -59,6 +59,8 @@ class PerplexityWorker(BaseWorker):
                 'success': perplexity_result.get('success', False),
                 'processed_at': datetime.utcnow().isoformat(),
                 'processing_metadata': perplexity_result.get('processing_metadata', {}),
+                'parsed_data': perplexity_result.get('parsed_data', {}),
+                'formatted_data': perplexity_result.get('formatted_data', {}),
                 'url_index': url_index,
                 'total_urls': total_urls
             })
@@ -69,11 +71,15 @@ class PerplexityWorker(BaseWorker):
             
             # Update payload with Perplexity response
             updated_payload = payload.copy()
+            formatted_data = perplexity_result.get('formatted_data', {})
             updated_payload.update({
                 'perplexity_response': perplexity_result.get('perplexity_response', ''),
                 'perplexity_success': perplexity_result.get('success', False),
                 's3_perplexity_key': s3_key,
-                'processed_at': datetime.utcnow().isoformat()
+                'processed_at': datetime.utcnow().isoformat(),
+                'main_content': formatted_data.get('main_content', ''),
+                'publish_date': formatted_data.get('publish_date'),
+                'source_category': formatted_data.get('source_category')
             })
             
             # Update the item in DynamoDB
@@ -102,7 +108,9 @@ class PerplexityWorker(BaseWorker):
                         'source_info': payload.get('source_info', {}),
                         'processing_metadata': perplexity_result.get('processing_metadata', {}),
                         'url_index': url_index,
-                        'total_urls': total_urls
+                        'total_urls': total_urls,
+                        'publish_date': formatted_data.get('publish_date'),
+                        'source_category': formatted_data.get('source_category')
                     }
                     
                     # Call DB operations service for additional tables
@@ -113,6 +121,8 @@ class PerplexityWorker(BaseWorker):
                     content_id = db_results.get('content_id')
                     if content_id:
                         updated_payload['content_id'] = content_id
+                        updated_payload['source_category'] = formatted_data.get('source_category')
+                        updated_payload['publish_date'] = formatted_data.get('publish_date')
                         logger.info(f"Content ID {content_id} assigned for URL {url_index}/{total_urls}")
                     
                 except Exception as db_error:
@@ -207,7 +217,10 @@ class PerplexityWorker(BaseWorker):
                     'source_info': payload.get('source_info', {}),
                     'url_index': url_index,
                     'total_urls': total_urls,
-                    'content_id': payload.get('content_id', '')  # Pass content ID to next queues
+                    'content_id': payload.get('content_id', ''),  # Pass content ID to next queues
+                    'main_content': payload.get('main_content', ''),
+                    'publish_date': payload.get('publish_date'),
+                    'source_category': payload.get('source_category')
                 }
                 
                 logger.info(f"DEBUG: Creating {queue_name} item with payload keys: {list(next_payload.keys())}")
@@ -267,7 +280,17 @@ class PerplexityWorker(BaseWorker):
         except Exception as e:
             logger.error(f"Error calling Perplexity: {str(e)}")
             return {
-                'perplexity_response': f"Error: {str(e)}",
+                'perplexity_response': f"<div><p>Error: {str(e)}</p></div>",
                 'success': False,
-                'status': 'error'
+                'status': 'error',
+                'formatted_data': {
+                    'main_content': f"<div><p>Error: {str(e)}</p></div>",
+                    'publish_date': None,
+                    'source_category': None
+                },
+                'parsed_data': {},
+                'processing_metadata': {
+                    'error': str(e),
+                    'processed_at': datetime.utcnow().isoformat()
+                }
             }

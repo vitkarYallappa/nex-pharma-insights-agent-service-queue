@@ -9,18 +9,43 @@ class SimplePromptConfig:
     
     # Development prompt - simple and quick for testing
     DEVELOPMENT_PROMPT = """
-    Analyze this URL and provide a brief summary:
-    
-    URL: {url}
-    Title: {title}
-    Content: {snippet}
-    
-    Please provide:
-    1. Main topic (1-2 sentences)
-    2. Key points (3-5 bullet points)
-    3. Market relevance (if any)
-    
-    Keep it simple and concise for development testing.
+   Task: Analyze the given URL by fetching its full content.  
+
+Inputs:  
+- URL: {url}  
+- Title: {title}  
+
+Strict Rules:  
+- Only fetch and use the content from the provided URL.  
+- Do not use external sources beyond the given URL.  
+- Do not infer, assume, or add outside knowledge.  
+- If publish date or source_category is missing in the content, return null.  
+- Always include all keys in the JSON, even if values are null.  
+
+Allowed Source Categories:  
+- "regulatory" (FDA, EMA, MHRA, etc.)  
+- "clinical_trials" (ClinicalTrials.gov, trial registries, publications)  
+- "scientific_journal" (peer-reviewed research)  
+- "news_media" (pharma/healthcare press coverage)  
+- "corporate" (company websites, press releases, investor reports)  
+- "market_research" (analyst reports, industry insights)  
+- "policy" (government/WHO guidelines, health authorities)  
+- "other" (anything outside these categories)  
+
+Output Format (JSON):  
+{
+  "url": "{url}",
+  "title": "{title}",
+  "publish_date": "YYYY-MM-DD or null",
+  "source_category": "regulatory | clinical_trials | scientific_journal | news_media | corporate | market_research | policy | other | null",
+  "main_topic": "1–2 sentences",
+  "key_points": [
+    "point 1",
+    "point 2",
+    "point 3"
+  ]
+}
+
     """
     
     # Production prompt - comprehensive for real analysis
