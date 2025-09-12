@@ -4,7 +4,7 @@ from typing import Dict, Any, Optional
 
 from app.utils.logger import get_logger
 from app.database.dynamodb_client import DynamoDBClient
-from app.queues.insight.bedrock_service import InsightBedrockService
+from app.services.regenerate_insights_bedrock_service import RegenerateInsightsBedrockService
 
 logger = get_logger(__name__)
 
@@ -15,7 +15,7 @@ class RegenerateInsightsService:
     def __init__(self):
         self.service_name = "Regenerate Insights Service"
         self.dynamodb_client = DynamoDBClient()
-        self.bedrock_service = InsightBedrockService()
+        self.bedrock_service = RegenerateInsightsBedrockService()
         
         # Table names - using existing table patterns
         self.insights_table = "content_insight-local"

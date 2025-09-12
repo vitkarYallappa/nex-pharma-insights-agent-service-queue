@@ -11,6 +11,7 @@ from config import settings
 from app.utils.logger import get_logger, setup_logging
 from app.api.v1.routes import router as api_router
 from app.api.v1.migration_routes import router as migration_router
+from app.api.v1.regenerate_routes import router as regenerate_router
 
 # Import workers
 from app.queues.request_acceptance.worker import RequestAcceptanceWorker
@@ -74,6 +75,7 @@ app.add_middleware(
 # Include routers
 app.include_router(api_router, prefix=settings.api_prefix)
 app.include_router(migration_router, prefix=settings.api_prefix)
+app.include_router(regenerate_router, prefix=settings.api_prefix)
 
 
 @app.get("/")
