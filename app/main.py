@@ -16,7 +16,8 @@ from app.api.v1.migration_routes import router as migration_router
 from app.queues.request_acceptance.worker import RequestAcceptanceWorker
 from app.queues.serp.worker import SerpWorker
 from app.queues.perplexity.worker import PerplexityWorker
-# Note: We'll add the remaining workers in the next batch
+from app.queues.insight.worker import InsightWorker
+# from app.queues.implication.worker import ImplicationWorker
 
 # Setup logging
 setup_logging()
@@ -193,7 +194,8 @@ async def start_workers():
             ("request_acceptance", RequestAcceptanceWorker),
             ("serp", SerpWorker),
             ("perplexity", PerplexityWorker),
-            # Note: Add remaining workers here when implemented
+            ("insight", InsightWorker),
+            # ("implication", ImplicationWorker),
         ]
         
         for name, worker_class in worker_classes:

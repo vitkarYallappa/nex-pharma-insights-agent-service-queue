@@ -5,6 +5,7 @@ Handles DynamoDB operations for content_repository-local, content_summary-local,
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 import json
+import uuid
 
 from app.database.dynamodb_client import dynamodb_client
 from app.utils.logger import get_logger
@@ -43,18 +44,22 @@ class PerplexityDBOperationsService:
             
             if not project_id or not request_id:
                 raise ValueError("Missing project_id or request_id")
+
+            shared_uuid = uuid.uuid4()
             
             # Process each DynamoDB table
             results = {
-                'content_repository_result': self._store_content_repository(perplexity_data),
-                'content_summary_result': self._store_content_summary(perplexity_data),
-                'content_url_mapping_result': self._store_content_url_mapping(perplexity_data),
+                'content_repository_result': self._store_content_repository(perplexity_data, shared_uuid),
+                'content_summary_result': self._store_content_summary(perplexity_data, shared_uuid),
+                'content_url_mapping_result': self._store_content_url_mapping(perplexity_data, shared_uuid),
+                'content_id': str(shared_uuid),  # Include content ID for next queues
                 'processing_metadata': {
                     'processed_at': datetime.utcnow().isoformat(),
                     'service': self.service_name,
                     'project_id': project_id,
                     'request_id': request_id,
-                    'tables_processed': 3
+                    'tables_processed': 3,
+                    'content_id': str(shared_uuid)
                 }
             }
             
@@ -72,7 +77,7 @@ class PerplexityDBOperationsService:
                 }
             }
     
-    def _store_content_repository(self, perplexity_data: Dict[str, Any]) -> Dict[str, Any]:
+    def _store_content_repository(self, perplexity_data: Dict[str, Any], shared_uuid: uuid.UUID) -> Dict[str, Any]:
         """
         Store data in content_repository-local table
         
@@ -87,34 +92,34 @@ class PerplexityDBOperationsService:
             request_id = perplexity_data.get('request_id')
             url_data = perplexity_data.get('url_data', {})
             
-            # Create content repository item
+            # Create content repository item matching ContentRepositoryModel structure
+            now = datetime.utcnow().isoformat()
+            content_hash = str(hash(perplexity_data.get('perplexity_response', '')))
+            
             content_item = {
-                'PK': f"CONTENT#{project_id}#{request_id}",
-                'SK': f"URL#{url_data.get('url', 'unknown')}#{int(datetime.utcnow().timestamp())}",
-                'project_id': project_id,
+                'pk': str(shared_uuid),
                 'request_id': request_id,
-                'url': url_data.get('url', ''),
+                'project_id': project_id,
+                'canonical_url': url_data.get('url', ''),
                 'title': url_data.get('title', ''),
-                'snippet': url_data.get('snippet', ''),
-                'source': url_data.get('source', ''),
-                'relevance_score': url_data.get('relevance_score', 0.0),
-                'perplexity_response': perplexity_data.get('perplexity_response', ''),
-                'response_length': len(perplexity_data.get('perplexity_response', '')),
-                'processing_success': perplexity_data.get('processing_metadata', {}).get('status') != 'error',
-                'created_at': datetime.utcnow().isoformat(),
-                'updated_at': datetime.utcnow().isoformat(),
-                'status': 'processed'
+                'content_hash': content_hash,
+                'source_type': url_data.get('source', 'perplexity'),
+                'version': 1,
+                'is_canonical': True,
+                'relevance_type': 'high' if url_data.get('relevance_score', 0.0) > 0.7 else 'medium',
+                'created_at': now,
+                'updated_at': now
             }
             
             # Store in DynamoDB
             success = dynamodb_client.put_item(self.content_repository_table, content_item)
             
             if success:
-                logger.info(f"Stored content repository item: {content_item['PK']}")
+                logger.info(f"Stored content repository item: {content_item['pk']}")
                 return {
                     'success': True,
                     'table_name': self.content_repository_table,
-                    'item_key': content_item['PK'],
+                    'item_key': content_item['pk'],
                     'message': 'Content repository data stored successfully'
                 }
             else:
@@ -128,7 +133,7 @@ class PerplexityDBOperationsService:
                 'error': str(e)
             }
     
-    def _store_content_summary(self, perplexity_data: Dict[str, Any]) -> Dict[str, Any]:
+    def _store_content_summary(self, perplexity_data: Dict[str, Any], shared_uuid: uuid.UUID) -> Dict[str, Any]:
         """
         Store data in content_summary-local table
         
@@ -143,34 +148,33 @@ class PerplexityDBOperationsService:
             request_id = perplexity_data.get('request_id')
             perplexity_response = perplexity_data.get('perplexity_response', '')
             
-            # Create content summary item
+            # Create content summary item matching ContentSummaryModel structure
+            now = datetime.utcnow().isoformat()
+            url_data = perplexity_data.get('url_data', {})
+
             summary_item = {
-                'PK': f"SUMMARY#{project_id}#{request_id}",
-                'SK': f"PERPLEXITY#{int(datetime.utcnow().timestamp())}",
-                'project_id': project_id,
-                'request_id': request_id,
+                'pk': str(uuid.uuid4()),
+                'url_id': str(shared_uuid),
+                'content_id': str(shared_uuid),
                 'summary_text': self._extract_summary(perplexity_response),
-                'full_response': perplexity_response,
-                'word_count': len(perplexity_response.split()) if perplexity_response else 0,
-                'key_points': self._extract_key_points(perplexity_response),
-                'market_relevance': self._assess_market_relevance(perplexity_response),
-                'quality_score': self._calculate_quality_score(perplexity_data),
-                'source_url': perplexity_data.get('url_data', {}).get('url', ''),
-                'keywords': perplexity_data.get('source_info', {}).get('keywords', []),
-                'created_at': datetime.utcnow().isoformat(),
-                'updated_at': datetime.utcnow().isoformat(),
-                'status': 'processed'
+                'summary_content_file_path': f"summaries/{project_id}/{request_id}/summary.json",
+                'confidence_score': self._calculate_quality_score(perplexity_data),
+                'version': 1,
+                'is_canonical': True,
+                'preferred_choice': True,
+                'created_at': now,
+                'created_by': 'perplexity_service'
             }
             
             # Store in DynamoDB
             success = dynamodb_client.put_item(self.content_summary_table, summary_item)
             
             if success:
-                logger.info(f"Stored content summary item: {summary_item['PK']}")
+                logger.info(f"Stored content summary item: {summary_item['pk']}")
                 return {
                     'success': True,
                     'table_name': self.content_summary_table,
-                    'item_key': summary_item['PK'],
+                    'item_key': summary_item['pk'],
                     'message': 'Content summary data stored successfully'
                 }
             else:
@@ -184,7 +188,7 @@ class PerplexityDBOperationsService:
                 'error': str(e)
             }
     
-    def _store_content_url_mapping(self, perplexity_data: Dict[str, Any]) -> Dict[str, Any]:
+    def _store_content_url_mapping(self, perplexity_data: Dict[str, Any], shared_uuid: uuid.UUID) -> Dict[str, Any]:
         """
         Store data in content_url_mapping-local table
         
@@ -199,39 +203,31 @@ class PerplexityDBOperationsService:
             request_id = perplexity_data.get('request_id')
             url_data = perplexity_data.get('url_data', {})
             
-            # Create content URL mapping item
+            # Create content URL mapping item matching ContentUrlMappingModel structure
+            now = datetime.utcnow().isoformat()
+            url = url_data.get('url', '')
+            
             mapping_item = {
-                'PK': f"MAPPING#{project_id}#{request_id}",
-                'SK': f"URL#{url_data.get('url', 'unknown')}#{int(datetime.utcnow().timestamp())}",
-                'project_id': project_id,
-                'request_id': request_id,
-                'original_url': url_data.get('url', ''),
-                'url_hash': hash(url_data.get('url', '')) if url_data.get('url') else 0,
-                'url_title': url_data.get('title', ''),
-                'url_source': url_data.get('source', ''),
-                'url_position': url_data.get('position', 0),
-                'relevance_score': url_data.get('relevance_score', 0.0),
-                'content_repository_key': f"CONTENT#{project_id}#{request_id}",
-                'content_summary_key': f"SUMMARY#{project_id}#{request_id}",
-                'processing_order': perplexity_data.get('url_index', 1),
-                'total_urls_in_batch': perplexity_data.get('total_urls', 1),
-                'serp_query': perplexity_data.get('source_info', {}).get('query', ''),
-                'keywords': perplexity_data.get('source_info', {}).get('keywords', []),
-                'processing_success': perplexity_data.get('processing_metadata', {}).get('status') != 'error',
-                'created_at': datetime.utcnow().isoformat(),
-                'updated_at': datetime.utcnow().isoformat(),
-                'status': 'mapped'
+                'pk': str(uuid.uuid4()),
+                'discovered_url': url,
+                'title': url_data.get('title', ''),
+                'content_id': str(shared_uuid),
+                'source_domain': self._extract_domain(url),
+                'is_canonical': True,
+                'dedup_confidence': url_data.get('relevance_score', 0.0),
+                'dedup_method': 'perplexity_analysis',
+                'discovered_at': now
             }
             
             # Store in DynamoDB
             success = dynamodb_client.put_item(self.content_url_mapping_table, mapping_item)
             
             if success:
-                logger.info(f"Stored content URL mapping item: {mapping_item['PK']}")
+                logger.info(f"Stored content URL mapping item: {mapping_item['pk']}")
                 return {
                     'success': True,
                     'table_name': self.content_url_mapping_table,
-                    'item_key': mapping_item['PK'],
+                    'item_key': mapping_item['pk'],
                     'message': 'Content URL mapping stored successfully'
                 }
             else:
@@ -333,6 +329,22 @@ class PerplexityDBOperationsService:
             return min(1.0, score)
         except Exception:
             return 0.0
+    
+    def _extract_domain(self, url: str) -> str:
+        """Extract domain from URL"""
+        try:
+            if not url:
+                return "unknown"
+            
+            # Simple domain extraction
+            if url.startswith(('http://', 'https://')):
+                domain = url.split('/')[2]
+            else:
+                domain = url.split('/')[0]
+            
+            return domain.lower()
+        except Exception:
+            return "unknown"
 
 
 # Global service instance

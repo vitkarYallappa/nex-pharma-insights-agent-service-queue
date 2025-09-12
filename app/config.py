@@ -79,6 +79,13 @@ class UnifiedSettings(BaseSettings):
     
     # Bedrock Configuration
     BEDROCK_MOCK_MODE: bool = Field(default=False)
+    BEDROCK_AWS_BEDROCK_AGENT_ID: Optional[str] = Field(default=None)
+    BEDROCK_AWS_BEDROCK_AGENT_ALIAS_ID: Optional[str] = Field(default=None)
+    BEDROCK_AWS_REGION: Optional[str] = Field(default=None)
+    BEDROCK_AWS_ACCESS_KEY_ID: Optional[str] = Field(default=None)
+    BEDROCK_AWS_SECRET_ACCESS_KEY: Optional[str] = Field(default=None)
+    BEDROCK_AWS_SESSION_TOKEN: Optional[str] = Field(default=None)
+    
     PERPLEXITY_API_KEY: Optional[str] = Field(default=None)
     SERP_API_KEY: Optional[str] = Field(default=None)
     ANTHROPIC_API_KEY: Optional[str] = Field(default=None)
@@ -347,8 +354,19 @@ class UnifiedSettings(BaseSettings):
     # PYDANTIC CONFIGURATION
     # ============================================================================
     class Config:
-        # Try multiple .env file locations
-        env_file = [".env", "../.env", "../../.env"]
+        # Try multiple .env file locations - relative to config.py location
+        import os
+        from pathlib import Path
+        
+        # Get the directory where config.py is located (app/)
+        config_dir = Path(__file__).parent
+        
+        # Look for .env file in config directory and parent directories
+        env_file = [
+            str(config_dir / ".env"),           # app/.env
+            str(config_dir.parent / ".env"),    # project_root/.env (this is what we want)
+            str(config_dir.parent.parent / ".env")  # grandparent/.env
+        ]
         case_sensitive = True
         extra = "allow"  # Allow extra properties
         env_file_encoding = 'utf-8'

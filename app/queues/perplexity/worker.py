@@ -109,6 +109,12 @@ class PerplexityWorker(BaseWorker):
                     db_results = db_operations_service.process_perplexity_completion(db_data)
                     logger.info(f"DB operations completed for {url_index}/{total_urls}: {db_results.get('processing_metadata', {}).get('status', 'unknown')}")
                     
+                    # Extract content_id from DB operations result
+                    content_id = db_results.get('content_id')
+                    if content_id:
+                        updated_payload['content_id'] = content_id
+                        logger.info(f"Content ID {content_id} assigned for URL {url_index}/{total_urls}")
+                    
                 except Exception as db_error:
                     logger.error(f"DB operations failed for {url_index}/{total_urls}: {str(db_error)}")
                     # Don't fail the main process if DB operations fail
@@ -200,7 +206,8 @@ class PerplexityWorker(BaseWorker):
                     'user_prompt': payload.get('user_prompt', ''),
                     'source_info': payload.get('source_info', {}),
                     'url_index': url_index,
-                    'total_urls': total_urls
+                    'total_urls': total_urls,
+                    'content_id': payload.get('content_id', '')  # Pass content ID to next queues
                 }
                 
                 logger.info(f"DEBUG: Creating {queue_name} item with payload keys: {list(next_payload.keys())}")
