@@ -12,8 +12,8 @@ class SimplePromptConfig:
    Task: Analyze the given URL by fetching its full content.  
 
 Inputs:  
-- URL: {url}  
-- Title: {title}  
+- URL: {{URL_PLACEHOLDER}}  
+- Title: {{TITLE_PLACEHOLDER}}  
 
 Strict Rules:  
 - Only fetch and use the content from the provided URL.  
@@ -34,8 +34,8 @@ Allowed Source Categories:
 
 Output Format (JSON):  
 {
-  "url": "{url}",
-  "title": "{title}",
+  "url": "{{URL_PLACEHOLDER}}",
+  "title": "{{TITLE_PLACEHOLDER}}",
   "publish_date": "YYYY-MM-DD or null",
   "source_category": "regulatory | clinical_trials | scientific_journal | news_media | corporate | market_research | policy | other | null",
   "main_topic": "1–2 sentences",
@@ -52,10 +52,10 @@ Output Format (JSON):
     PRODUCTION_PROMPT = """
     Analyze this pharmaceutical/healthcare URL for market intelligence:
     
-    URL: {url}
-    Title: {title}
-    Content Preview: {snippet}
-    Keywords: {keywords}
+    URL: {{URL_PLACEHOLDER}}
+    Title: {{TITLE_PLACEHOLDER}}
+    Content Preview: {{SNIPPET_PLACEHOLDER}}
+    Keywords: {{KEYWORDS_PLACEHOLDER}}
     
     Please provide a comprehensive analysis with:
     
@@ -97,13 +97,26 @@ class PromptManager:
         else:
             prompt_template = SimplePromptConfig.DEVELOPMENT_PROMPT
         
-        # Format the prompt with actual data
-        return prompt_template.format(
-            url=url,
-            title=title,
-            snippet=snippet,
-            keywords=keywords_str
-        ).strip()
+        # Use string replacement instead of .format() to avoid KeyError with URLs containing {}
+        try:
+            prompt = prompt_template.replace('{{URL_PLACEHOLDER}}', url)
+            prompt = prompt.replace('{{TITLE_PLACEHOLDER}}', title)
+            prompt = prompt.replace('{{SNIPPET_PLACEHOLDER}}', snippet)
+            prompt = prompt.replace('{{KEYWORDS_PLACEHOLDER}}', keywords_str)
+            
+            return prompt.strip()
+        except Exception as e:
+            # Log the error and return a fallback prompt
+            print(f"Error formatting prompt: {e}")
+            fallback_prompt = f"""
+            Analyze this pharmaceutical/healthcare URL:
+            
+            URL: {url}
+            Title: {title}
+            
+            Please provide a comprehensive analysis focusing on pharmaceutical market intelligence.
+            """
+            return fallback_prompt.strip()
     
     @staticmethod
     def get_available_modes() -> list:

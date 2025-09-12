@@ -118,7 +118,7 @@ def _format_date_for_google(date_str: str) -> str:
         day = str(date_obj.day).zfill(2)  # Leading zero for day
         year = str(date_obj.year)
         return f"{month}/{day}/{year}"
-    except:
+    except Exception:
         return date_str
 
 

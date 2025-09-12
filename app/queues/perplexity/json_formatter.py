@@ -26,6 +26,17 @@ class PerplexityJSONFormatter:
             Structured dictionary with parsed data
         """
         try:
+            # Validate input
+            if not isinstance(content, str):
+                logger.error(f"Expected string content but got {type(content)}")
+                return PerplexityJSONFormatter._create_error_response(str(content), "Invalid content type - expected string")
+            
+            if not content or not content.strip():
+                logger.warning("Empty or whitespace-only content received")
+                return PerplexityJSONFormatter._create_error_response("", "Empty content")
+            
+            logger.debug(f"Parsing response content of length: {len(content)}")
+            
             # First, try to parse as JSON
             json_data = PerplexityJSONFormatter._extract_and_parse_json(content)
             if json_data:
@@ -38,6 +49,7 @@ class PerplexityJSONFormatter:
             
         except Exception as e:
             logger.error(f"Error parsing Perplexity response: {str(e)}")
+            logger.error(f"Content preview: {content[:200]}..." if len(content) > 200 else f"Full content: {content}")
             return PerplexityJSONFormatter._create_error_response(content, str(e))
     
     @staticmethod
@@ -49,24 +61,49 @@ class PerplexityJSONFormatter:
             
             # Try direct JSON parsing
             if cleaned_content.startswith('{') and cleaned_content.endswith('}'):
-                return json.loads(cleaned_content)
+                try:
+                    parsed = json.loads(cleaned_content)
+                    if isinstance(parsed, dict):
+                        return parsed
+                except json.JSONDecodeError as e:
+                    logger.debug(f"Direct JSON parsing failed: {str(e)}")
             
             # Look for JSON block in markdown code blocks
             json_pattern = r'```(?:json)?\s*(\{.*?\})\s*```'
             json_match = re.search(json_pattern, cleaned_content, re.DOTALL | re.IGNORECASE)
             if json_match:
-                return json.loads(json_match.group(1))
+                try:
+                    parsed = json.loads(json_match.group(1))
+                    if isinstance(parsed, dict):
+                        return parsed
+                except json.JSONDecodeError as e:
+                    logger.debug(f"Markdown JSON parsing failed: {str(e)}")
             
-            # Look for JSON object anywhere in the text
-            json_pattern = r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}'
+            # Look for JSON object anywhere in the text - improved regex
+            # This regex better handles nested braces and ensures complete JSON objects
+            json_pattern = r'\{(?:[^{}]|{[^{}]*})*\}'
             json_matches = re.findall(json_pattern, cleaned_content, re.DOTALL)
             
             for match in json_matches:
                 try:
+                    # Additional validation: ensure the match looks like valid JSON
+                    match = match.strip()
+                    if not match.startswith('{') or not match.endswith('}'):
+                        continue
+                    
+                    # Check for basic JSON structure indicators
+                    if '"' not in match or ':' not in match:
+                        continue
+                    
                     parsed = json.loads(match)
-                    if isinstance(parsed, dict) and len(parsed) > 2:  # Reasonable JSON object
+                    if isinstance(parsed, dict) and len(parsed) > 0:  # Any valid dict
+                        logger.debug(f"Successfully parsed JSON object with {len(parsed)} fields")
                         return parsed
-                except json.JSONDecodeError:
+                except json.JSONDecodeError as e:
+                    logger.debug(f"JSON parsing failed for match: {str(e)}")
+                    continue
+                except Exception as e:
+                    logger.debug(f"Unexpected error parsing JSON match: {str(e)}")
                     continue
             
             return None
@@ -79,6 +116,11 @@ class PerplexityJSONFormatter:
     def _normalize_json_response(json_data: Dict[str, Any]) -> Dict[str, Any]:
         """Normalize JSON response to standard format"""
         try:
+            # Validate that json_data is actually a dictionary
+            if not isinstance(json_data, dict):
+                logger.error(f"Expected dict but got {type(json_data)}: {str(json_data)[:100]}...")
+                return PerplexityJSONFormatter._create_error_response(str(json_data), "Invalid data type - expected dictionary")
+            
             # Expected fields from development prompt
             normalized = {
                 "response_type": "json",

@@ -136,6 +136,7 @@ async def list_available_tables():
         "serp": "serp_queue",
         "perplexity": "perplexity_queue",
         "fetch_content": "fetch_content_queue",
+        "relevance_check": "relevance_check_queue",
         "insight": "insight_queue",
         "implication": "implication_queue"
     }

@@ -37,6 +37,11 @@ class SerpWorker(BaseWorker):
             # Use real SERP API to get search results
             search_results = self._get_real_search_results(keywords, source)
             
+            # Skip entire flow if no search results found
+            if not search_results:
+                logger.warning(f"No search results found for source: {source_name}, skipping processing")
+                return True  # Return True to mark as completed (not failed)
+            
             # Extract project and request IDs
             project_id, request_id = self._extract_ids_from_pk(item.get('PK', ''))
             
@@ -163,7 +168,7 @@ class SerpWorker(BaseWorker):
         keywords = payload.get('keywords', [])
         
         logger.info(f"DEBUG: Found {len(search_results)} search results, source: {source.get('name', 'Unknown')}, keywords: {len(keywords)}")
-        
+
         # Get URLs from search results
         urls_with_data = []
         for result in search_results:
@@ -245,7 +250,7 @@ class SerpWorker(BaseWorker):
                     logger.info(f"Created Perplexity queue item {i+1}/{len(selected_urls)} for URL: {url_data['url'][:50]}... (score: {url_data.get('relevance_score', 0.5):.2f})")
                 else:
                     logger.error(f"Failed to create Perplexity queue item {i+1}/{len(selected_urls)}")
-                    
+
             except Exception as e:
                 logger.error(f"Failed to create Perplexity item {i+1}/{len(selected_urls)}: {str(e)}")
         

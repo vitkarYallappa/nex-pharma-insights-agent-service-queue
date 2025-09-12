@@ -17,6 +17,7 @@ from app.api.v1.regenerate_routes import router as regenerate_router
 from app.queues.request_acceptance.worker import RequestAcceptanceWorker
 from app.queues.serp.worker import SerpWorker
 from app.queues.perplexity.worker import PerplexityWorker
+from app.queues.relevance_check.worker import RelevanceCheckWorker
 from app.queues.insight.worker import InsightWorker
 from app.queues.implication.worker import ImplicationWorker
 
@@ -196,25 +197,35 @@ async def start_workers():
             ("request_acceptance", RequestAcceptanceWorker),
             ("serp", SerpWorker),
             ("perplexity", PerplexityWorker),
+            ("relevance_check", RelevanceCheckWorker),
             ("insight", InsightWorker),
             ("implication", ImplicationWorker),
         ]
         
         for name, worker_class in worker_classes:
             try:
+                logger.info(f"🚀 INITIALIZING {name.upper()} QUEUE WORKER...")
                 worker = worker_class()
                 workers[name] = worker
                 
                 # Start worker thread
                 worker.start_worker_thread()
                 
-                logger.info(f"Started {name} worker")
+                logger.info(f"✅ {name.upper()} QUEUE WORKER STARTED - Polling for tasks every {worker.poll_interval}s")
                 
             except Exception as e:
-                logger.error(f"Failed to start {name} worker: {str(e)}")
+                logger.error(f"❌ FAILED TO START {name.upper()} WORKER: {str(e)}")
                 workers[name] = None
         
-        logger.info(f"Started {len([w for w in workers.values() if w])} workers successfully")
+        active_workers = [w for w in workers.values() if w]
+        logger.info(f"🎯 QUEUE SYSTEM READY - {len(active_workers)}/{len(worker_classes)} workers running successfully")
+        
+        # Log active queues
+        if active_workers:
+            active_queue_names = [name.upper() for name, worker in workers.items() if worker]
+            logger.info(f"📋 ACTIVE QUEUES: {', '.join(active_queue_names)}")
+        else:
+            logger.warning("⚠️  NO QUEUE WORKERS ARE RUNNING!")
         
     except Exception as e:
         logger.error(f"Failed to start workers: {str(e)}")

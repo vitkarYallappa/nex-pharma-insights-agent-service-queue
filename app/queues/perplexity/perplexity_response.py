@@ -116,7 +116,7 @@ class PerplexityResponseHandler:
                     # Try to parse date (simplified)
                     if len(date_str) == 10 and date_str.count('-') == 2:
                         metadata["published_date"] = datetime.fromisoformat(date_str)
-                except:
+                except Exception:
                     pass
         
         return metadata

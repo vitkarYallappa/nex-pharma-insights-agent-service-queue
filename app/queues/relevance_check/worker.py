@@ -59,11 +59,9 @@ class RelevanceCheckWorker(BaseWorker):
                 return False
             
             # Store relevance check results in S3
-            s3_key = s3_client.store_content_data(project_id, request_id, {
+            s3_key = s3_client.store_insights(project_id, request_id, {
                 'content_id': content_id,
-                'relevance_check': relevance_result.get('relevance_analysis', ''),
-                'relevance_score': relevance_result.get('relevance_score', 0.0),
-                'is_relevant': relevance_result.get('is_relevant', False),
+                'relevance_analysis': relevance_result.get('relevance_analysis', ''),
                 'url_data': url_data,
                 'processing_metadata': relevance_result.get('processing_metadata', {}),
                 'processed_at': datetime.utcnow().isoformat(),
@@ -72,15 +70,13 @@ class RelevanceCheckWorker(BaseWorker):
             })
             
             if not s3_key:
-                logger.error(f"Failed to store relevance check in S3 for content ID: {content_id}")
+                logger.error(f"Failed to store relevance analysis in S3 for content ID: {content_id}")
                 return False
             
             # Update payload with relevance check result
             updated_payload = payload.copy()
             updated_payload.update({
-                'relevance_analysis': relevance_result.get('relevance_analysis', ''),
-                'relevance_score': relevance_result.get('relevance_score', 0.0),
-                'is_relevant': relevance_result.get('is_relevant', False),
+                'relevance_response': relevance_result.get('relevance_analysis', ''),
                 'relevance_success': relevance_result.get('success', False),
                 's3_relevance_key': s3_key,
                 'processed_at': datetime.utcnow().isoformat()
@@ -108,9 +104,7 @@ class RelevanceCheckWorker(BaseWorker):
                         'content_id': content_id,
                         'project_id': project_id,
                         'request_id': request_id,
-                        'relevance_analysis': relevance_result.get('relevance_analysis', ''),
-                        'relevance_score': relevance_result.get('relevance_score', 0.0),
-                        'is_relevant': relevance_result.get('is_relevant', False),
+                        'relevance_response': relevance_result.get('relevance_analysis', ''),
                         'relevance_success': relevance_result.get('success', False),
                         's3_relevance_key': s3_key,
                         'url_data': url_data,

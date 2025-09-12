@@ -25,16 +25,18 @@ class BaseWorker(ABC):
         self.batch_size = settings.queue_batch_size
         self.max_retries = settings.max_retries
         self.retry_delay = settings.retry_delay
+        self.last_heartbeat = datetime.utcnow()
+        self.heartbeat_interval = 60  # Log heartbeat every 60 seconds
         
         if not self.table_name:
             raise ValueError(f"Unknown queue name: {queue_name}")
         
-        logger.info(f"Initialized {self.__class__.__name__} for queue: {queue_name}")
+        logger.info(f"🔧 INITIALIZED {self.__class__.__name__} for queue: {queue_name.upper()} | Table: {self.table_name}")
     
     def start_polling(self):
         """Start the worker polling loop"""
         self.is_running = True
-        logger.info(f"Starting worker for queue: {self.queue_name}")
+        logger.info(f"🔄 STARTING POLLING LOOP for {self.queue_name.upper()} queue | Poll interval: {self.poll_interval}s | Batch size: {self.batch_size}")
         
         while self.is_running:
             try:
@@ -42,7 +44,7 @@ class BaseWorker(ABC):
                 pending_items = self._get_pending_items()
                 
                 if pending_items:
-                    logger.debug(f"Processing {len(pending_items)} items from {self.queue_name}")
+                    logger.info(f"📦 PROCESSING {len(pending_items)} items from {self.queue_name.upper()} queue")
                     
                     for item in pending_items:
                         if not self.is_running:
@@ -52,13 +54,19 @@ class BaseWorker(ABC):
                             # Add configurable delay before processing each task
                             task_delay = QUEUE_PROCESSING_LIMITS.get('task_delay_seconds', 3)
                             if task_delay > 0:
-                                logger.info(f"Waiting {task_delay} seconds before processing item {item.get('PK', 'unknown')}")
+                                logger.info(f"⏳ Waiting {task_delay} seconds before processing item {item.get('PK', 'unknown')}")
                                 time.sleep(task_delay)
                             
                             self._process_item(item)
                         except Exception as e:
                             logger.error(f"Error processing item {item.get('PK', 'unknown')}: {str(e)}")
                             self._handle_processing_error(item, str(e))
+                else:
+                    # Log heartbeat periodically when no items to process
+                    now = datetime.utcnow()
+                    if (now - self.last_heartbeat).total_seconds() >= self.heartbeat_interval:
+                        logger.info(f"💓 {self.queue_name.upper()} QUEUE HEARTBEAT - Worker running, no pending tasks")
+                        self.last_heartbeat = now
                 
                 # Sleep before next poll
                 time.sleep(self.poll_interval)
@@ -83,7 +91,7 @@ class BaseWorker(ABC):
         
         self.thread = threading.Thread(target=self.start_polling, daemon=True)
         self.thread.start()
-        logger.info(f"Started worker thread for {self.queue_name}")
+        logger.info(f"🧵 WORKER THREAD STARTED for {self.queue_name.upper()} queue - Thread ID: {self.thread.ident}")
     
     def _get_pending_items(self) -> List[Dict[str, Any]]:
         """Get pending items from the queue"""

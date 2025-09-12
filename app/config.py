@@ -446,6 +446,7 @@ QUEUE_TABLES = {
     "serp": "serp_queue", 
     "perplexity": "perplexity_queue",
     "fetch_content": "fetch_content_queue",
+    "relevance_check": "relevance_check_queue",
     "insight": "insight_queue",
     "implication": "implication_queue"
 }
@@ -454,7 +455,8 @@ QUEUE_TABLES = {
 QUEUE_WORKFLOW = {
     "request_acceptance": ["serp"],
     "serp": ["perplexity"],
-    "perplexity": ["insight", "implication"],  # Perplexity now goes directly to insight/implication
+    "perplexity": ["insight", "implication"],  # Perplexity triggers all three in parallel
+    "relevance_check": [],  # Relevance check is now a parallel process
     "fetch_content": ["insight", "implication"],  # Keep this for other flows if needed
     "insight": [],
     "implication": []

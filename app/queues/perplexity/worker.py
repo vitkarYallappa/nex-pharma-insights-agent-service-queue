@@ -133,7 +133,7 @@ class PerplexityWorker(BaseWorker):
                 updated_item = item.copy()
                 updated_item['payload'] = updated_payload
                 
-                # Manually trigger next queues with updated item
+                # Trigger next queues manually (don't use base worker to avoid duplicates)
                 self._trigger_next_queues(updated_item)
                 
                 return True
@@ -167,6 +167,7 @@ class PerplexityWorker(BaseWorker):
                 self._update_item_status(pk, sk, QueueStatus.COMPLETED)
                 logger.info(f"Successfully processed item: {pk}")
                 # Note: _trigger_next_queues is called inside process_item with updated data
+                # We don't call _trigger_next_queues here to avoid duplicates
             else:
                 # Handle failure
                 self._handle_processing_failure(item)
@@ -199,10 +200,10 @@ class PerplexityWorker(BaseWorker):
         
         logger.info(f"DEBUG: URL data: {url_data.get('url', 'No URL')[:50]}..., has perplexity_response: {len(perplexity_response) > 0}")
         
-        # Create both insight and implication queue items for this URL
+        # Create relevance_check, insight and implication queue items for this URL
         next_queues = ['insight', 'implication']
         
-        logger.info(f"Creating insight + implication queue items for URL {url_index}/{total_urls}")
+        logger.info(f"Creating relevance_check + insight + implication queue items for URL {url_index}/{total_urls}")
         
         for queue_name in next_queues:
             try:
@@ -255,7 +256,7 @@ class PerplexityWorker(BaseWorker):
             except Exception as e:
                 logger.error(f"Failed to create {queue_name} item for URL {url_index}/{total_urls}: {str(e)}")
         
-        logger.info(f"Completed creating insight + implication queue items for URL {url_index}/{total_urls}")
+        logger.info(f"Completed creating relevance_check + insight + implication queue items for URL {url_index}/{total_urls}")
     
     def prepare_next_queue_payload(self, next_queue: str, completed_item: Dict[str, Any]) -> Dict[str, Any]:
         """Prepare simple payload for next queue - NOT USED since we override _trigger_next_queues"""

@@ -75,7 +75,7 @@ class InfrastructureSetup:
                 self.s3_client.head_bucket(Bucket=bucket_name)
                 print(f"S3 bucket {bucket_name} already exists")
                 return True
-            except:
+            except Exception:
                 pass
 
             # Create bucket

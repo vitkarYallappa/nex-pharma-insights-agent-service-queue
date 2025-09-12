@@ -4,6 +4,7 @@ from .serp_migration import SerpMigration
 from .perplexity_migration import PerplexityMigration
 from .insight_migration import InsightMigration
 from .implication_migration import ImplicationMigration
+from .relevance_check_migration import RelevanceCheckMigration
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -15,6 +16,7 @@ class MigrationManager:
             'request_acceptance': RequestAcceptanceMigration(),
             'serp': SerpMigration(),
             'perplexity': PerplexityMigration(),
+            'relevance_check': RelevanceCheckMigration(),
             'insight': InsightMigration(),
             'implication': ImplicationMigration()
         }
