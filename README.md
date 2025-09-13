@@ -122,7 +122,7 @@ APP_NAME="Market Intelligence Service"
 APP_VERSION="1.0.0"
 DEBUG=true
 API_HOST=0.0.0.0
-API_PORT=8000
+API_PORT=8005
 
 # AWS Settings
 AWS_REGION=us-east-1
@@ -223,8 +223,8 @@ Submit a market intelligence processing request.
 ### Interactive Documentation
 
 When running in debug mode, access interactive API documentation at:
-- **Swagger UI**: `http://localhost:8000/docs`
-- **ReDoc**: `http://localhost:8000/redoc`
+- **Swagger UI**: `http://localhost:8005/docs`
+- **ReDoc**: `http://localhost:8005/redoc`
 
 ## 🔄 Queue Processing
 
@@ -268,7 +268,7 @@ FastAPI Request → request_queue_acceptance_queue
 
 1. **Start the development server**
 ```bash
-python3 -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+python3 -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8005
 ```
 
 2. **Run with custom configuration**
@@ -337,9 +337,9 @@ COPY requirements.txt .
 RUN pip install -r requirements.txt
 
 COPY . .
-EXPOSE 8000
+EXPOSE 8005
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8005"]
 ```
 
 ### Health Checks

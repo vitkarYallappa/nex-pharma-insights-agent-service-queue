@@ -44,7 +44,7 @@ test_request = {
 
 def test_api_flow():
     """Test the complete API flow"""
-    base_url = "http://localhost:8000"
+    base_url = "http://localhost:8005"
     
     print("🚀 Testing Market Intelligence Service Flow")
     print("=" * 50)
@@ -72,7 +72,7 @@ def test_api_flow():
             return
             
     except requests.exceptions.ConnectionError:
-        print("❌ Could not connect to the service. Make sure it's running on localhost:8000")
+        print("❌ Could not connect to the service. Make sure it's running on localhost:8005")
         print("   Run: python3 -m uvicorn app.main:app --reload")
         return
     except Exception as e:
@@ -174,7 +174,7 @@ def test_api_flow():
 
 def test_health_check():
     """Test basic health check"""
-    base_url = "http://localhost:8000"
+    base_url = "http://localhost:8005"
     
     print("🏥 Testing Health Check...")
     try:
@@ -202,6 +202,6 @@ if __name__ == "__main__":
     
     print(f"\n✨ Test completed at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"\n💡 To run the service:")
-    print(f"   python3 -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000")
+    print(f"   python3 -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8005")
     print(f"\n📚 API Documentation:")
-    print(f"   http://localhost:8000/docs") 
+    print(f"   http://localhost:8005/docs") 

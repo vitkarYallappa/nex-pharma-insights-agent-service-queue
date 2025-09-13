@@ -32,7 +32,7 @@ class LocalSetupTester:
             "timestamp": datetime.now().isoformat(),
             "environment": settings.ENVIRONMENT,
             "tests": {},
-            "service_url": "http://localhost:8000"
+            "service_url": "http://localhost:8005"
         }
         self.service_process = None
     
@@ -185,7 +185,7 @@ class LocalSetupTester:
                 sys.executable, "-m", "uvicorn", 
                 "app.main:app", 
                 "--host", "0.0.0.0", 
-                "--port", "8000",
+                "--port", "8005",
                 "--log-level", "info"
             ]
             
@@ -199,7 +199,7 @@ class LocalSetupTester:
             # Wait for service to start
             for i in range(30):  # Wait up to 30 seconds
                 try:
-                    response = requests.get("http://localhost:8000/health", timeout=2)
+                    response = requests.get("http://localhost:8005/health", timeout=2)
                     if response.status_code in [200, 503]:  # 503 is ok for degraded health
                         logger.info("✅ Service started successfully")
                         return True
@@ -217,7 +217,7 @@ class LocalSetupTester:
     def test_api_endpoints(self) -> Dict[str, Any]:
         """Test API endpoints"""
         try:
-            base_url = "http://localhost:8000"
+            base_url = "http://localhost:8005"
             
             endpoints = {
                 "root": "/",
@@ -261,7 +261,7 @@ class LocalSetupTester:
     def test_sample_request(self) -> Dict[str, Any]:
         """Test a sample market intelligence request"""
         try:
-            base_url = "http://localhost:8000"
+            base_url = "http://localhost:8005"
             
             # Sample request payload
             payload = {

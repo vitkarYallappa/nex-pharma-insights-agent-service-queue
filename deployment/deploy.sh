@@ -165,7 +165,7 @@ Group=$SERVICE_USER
 WorkingDirectory=$SERVICE_DIR/app
 Environment=PATH=$VENV_DIR/bin
 EnvironmentFile=$SERVICE_DIR/.env
-ExecStart=$VENV_DIR/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+ExecStart=$VENV_DIR/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 8005
 Restart=always
 RestartSec=10
 StandardOutput=journal
@@ -276,7 +276,7 @@ main() {
     start_service
     
     log_success "Deployment completed successfully!"
-    log_info "Service is running on port 8000"
+    log_info "Service is running on port 8005"
     log_info "Check logs with: journalctl -u $SERVICE_NAME -f"
     log_info "Service status: systemctl status $SERVICE_NAME"
     
