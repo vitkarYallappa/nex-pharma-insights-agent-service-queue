@@ -22,22 +22,41 @@ class S3Client:
             access_key = settings.MINIO_ACCESS_KEY
             secret_key = settings.MINIO_SECRET_KEY
             region = settings.aws_region
+            
+            self.session = boto3.Session(
+                aws_access_key_id=access_key,
+                aws_secret_access_key=secret_key,
+                region_name=region
+            )
+            
+            self.client = self.session.client(
+                's3',
+                endpoint_url=settings.s3_endpoint_url
+            )
         else:
-            # Use AWS credentials for production
-            access_key = settings.aws_access_key_id
-            secret_key = settings.aws_secret_access_key
-            region = settings.aws_region
-        
-        self.session = boto3.Session(
-            aws_access_key_id=access_key,
-            aws_secret_access_key=secret_key,
-            region_name=region
-        )
-        
-        self.client = self.session.client(
-            's3',
-            endpoint_url=settings.s3_endpoint_url
-        )
+            # AWS S3 - use IAM instance role or explicit credentials
+            # Check if we have explicit credentials
+            if settings.aws_access_key_id and settings.aws_secret_access_key and \
+               settings.aws_access_key_id not in ["local", "dummy", "test"] and \
+               settings.aws_secret_access_key not in ["local", "dummy", "test"]:
+                # Use explicit credentials (for local development)
+                self.session = boto3.Session(
+                    aws_access_key_id=settings.aws_access_key_id,
+                    aws_secret_access_key=settings.aws_secret_access_key,
+                    region_name=settings.aws_region
+                )
+                
+                self.client = self.session.client(
+                    's3',
+                    endpoint_url=settings.s3_endpoint_url
+                )
+            else:
+                # Use default credential chain (IAM instance role, environment variables, etc.)
+                self.client = boto3.client(
+                    's3',
+                    region_name=settings.aws_region,
+                    endpoint_url=settings.s3_endpoint_url
+                )
         
         self.bucket_name = settings.s3_bucket_name
     

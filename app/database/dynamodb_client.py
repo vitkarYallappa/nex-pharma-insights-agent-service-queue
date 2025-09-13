@@ -53,14 +53,23 @@ class DynamoDBClient:
                 region_name=region
             )
         else:
-            # AWS DynamoDB - use real credentials
-            self.session = boto3.Session(
-                aws_access_key_id=settings.aws_access_key_id,
-                aws_secret_access_key=settings.aws_secret_access_key,
-                region_name=settings.aws_region
-            )
-            self.dynamodb = self.session.resource('dynamodb')
-            self.client = self.session.client('dynamodb')
+            # AWS DynamoDB - use IAM instance role or explicit credentials
+            # Check if we have explicit credentials
+            if settings.aws_access_key_id and settings.aws_secret_access_key and \
+               settings.aws_access_key_id not in ["local", "dummy", "test"] and \
+               settings.aws_secret_access_key not in ["local", "dummy", "test"]:
+                # Use explicit credentials (for local development)
+                self.session = boto3.Session(
+                    aws_access_key_id=settings.aws_access_key_id,
+                    aws_secret_access_key=settings.aws_secret_access_key,
+                    region_name=settings.aws_region
+                )
+                self.dynamodb = self.session.resource('dynamodb')
+                self.client = self.session.client('dynamodb')
+            else:
+                # Use default credential chain (IAM instance role, environment variables, etc.)
+                self.dynamodb = boto3.resource('dynamodb', region_name=settings.aws_region)
+                self.client = boto3.client('dynamodb', region_name=settings.aws_region)
         
         # Cache table objects
         self._tables = {}

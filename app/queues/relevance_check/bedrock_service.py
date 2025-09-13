@@ -28,7 +28,7 @@ class RelevanceCheckBedrockService:
         self.aws_secret_access_key = settings.BEDROCK_AWS_SECRET_ACCESS_KEY
         self.aws_session_token = settings.BEDROCK_AWS_SESSION_TOKEN
         
-        # Validate credentials are loaded
+        # Validate credentials are loaded (allow fallback to IAM role)
         if not self.aws_access_key_id or not self.aws_secret_access_key:
             logger.error("❌ BEDROCK CREDENTIALS MISSING - Check your .env file for BEDROCK_AWS_ACCESS_KEY_ID and BEDROCK_AWS_SECRET_ACCESS_KEY")
             
@@ -96,13 +96,24 @@ class RelevanceCheckBedrockService:
             
             logger.info(f"Initializing Bedrock Agent client for agent: {self.aws_bedrock_agent_id}")
             
-            self.bedrock_client = boto3.client(
-                "bedrock-agent-runtime",
-                aws_access_key_id=self.aws_access_key_id,
-                aws_secret_access_key=self.aws_secret_access_key,
-                region_name=self.aws_region,
-                aws_session_token=self.aws_session_token if self.aws_session_token else None
-            )
+            # Check if we have explicit credentials
+            if self.aws_access_key_id and self.aws_secret_access_key and \
+               self.aws_access_key_id not in ["local", "dummy", "test"] and \
+               self.aws_secret_access_key not in ["local", "dummy", "test"]:
+                # Use explicit credentials (for local development)
+                self.bedrock_client = boto3.client(
+                    "bedrock-agent-runtime",
+                    aws_access_key_id=self.aws_access_key_id,
+                    aws_secret_access_key=self.aws_secret_access_key,
+                    region_name=self.aws_region,
+                    aws_session_token=self.aws_session_token if self.aws_session_token else None
+                )
+            else:
+                # Use default credential chain (IAM instance role, environment variables, etc.)
+                self.bedrock_client = boto3.client(
+                    "bedrock-agent-runtime",
+                    region_name=self.aws_region
+                )
             
             logger.info(f"Successfully created Bedrock Agent client for agent: {self.aws_bedrock_agent_id}")
             
