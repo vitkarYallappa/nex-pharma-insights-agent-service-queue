@@ -117,7 +117,7 @@ class RegenerateInsightsService:
                 return None
             
             # Get the most recent insight (assuming there might be multiple)
-            latest_item = max(items, key=lambda x: x.get('created_at', ''))
+            latest_item = max(items, key=lambda x: x.get('created_at', '') if isinstance(x, dict) else "")
             
             # Extract the insight text
             summary = latest_item.get('insight_text', '') or latest_item.get('content', '')
@@ -235,7 +235,7 @@ Generate enhanced market insights that specifically address the user's requireme
             )
             
             # Sort by creation time (newest first) and limit
-            sorted_items = sorted(items, key=lambda x: x.get('created_at', ''), reverse=True)[:limit]
+            sorted_items = sorted(items, key=lambda x: x.get('created_at', '') if isinstance(x, dict) else "", reverse=True)[:limit]
             
             return {
                 "success": True,

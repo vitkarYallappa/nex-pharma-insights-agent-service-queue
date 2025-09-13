@@ -121,7 +121,7 @@ class InsightDBOperationsService:
                 'insight_text': insights_response,
                 'insight_content_file_path': insight_content_file_path,
                 'insight_category': insight_category,
-                'confidence_score': confidence_score,
+                'confidence_score': "saved",
                 'version': 1,
                 'is_canonical': True,
                 'preferred_choice': True,

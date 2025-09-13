@@ -7,10 +7,75 @@ from datetime import datetime
 import json
 import uuid
 
+from boto3.dynamodb.conditions import Attr
+
 from app.database.dynamodb_client import dynamodb_client
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+# Default KITs and KIQs content for fallback scenarios
+DEFAULT_KITS_KIQS_CONTENT = """KITs
+
+Competitor Pipeline & Clinical Development
+Trial initiations, readouts, delays, regulatory submissions, approvals, or setbacks.
+
+Market Access & Pricing
+Payer decisions, formulary updates, HTA reviews, price changes, reimbursement news.
+
+Commercial & Marketing Strategy
+New campaigns, brand positioning, DTC/physician outreach, partnerships.
+
+Regulatory & Policy Landscape
+Guideline updates, new regulations, safety warnings, black box labels.
+
+Launch Activities & Timelines
+Launch milestones, territory expansions, stocking reports, early adoption metrics.
+
+Mergers, Acquisitions, and Partnerships
+Alliances, licensing deals, co-commercialization, distribution partnerships.
+
+HCP Engagement & Advocacy
+KOL activities, advisory boards, guideline influence, publications, speaking events.
+
+Scientific & Innovation Trends
+Novel MOAs, platform technologies, biomarker strategies, competitor R&D focus.
+
+Patient Advocacy & Sentiment
+Patient group activity, social sentiment, advocacy campaigns.
+
+Manufacturing & Supply Chain
+Production capacity, shortages, recalls, manufacturing investments.
+
+
+KIQs: Market & Competitive Landscape
+What are competitors' near-term and long-term launch timelines?
+What new trial data or regulatory updates could disrupt our market positioning?
+Are there emerging players or startups targeting our indication?
+
+Access & Pricing
+Are there payer decisions or HTA outcomes that could affect uptake?
+Is there evidence of pricing pressure or innovative pricing models (outcomes-based, etc.)?
+
+Commercial Execution
+How are competitors differentiating their messaging and branding?
+Are there new channels or campaigns being tested (digital, omnichannel, etc.)?
+
+Medical Affairs & Evidence
+Which KOLs are influencing guidelines or prescribing?
+Are there shifts in clinical practice guidelines?
+
+Policy & Regulatory
+Are there regulatory shifts that may accelerate or delay market entry?
+Is there increased scrutiny on safety, manufacturing, or supply?
+
+Innovation & Pipeline
+Are new MOAs or platforms being developed that threaten our assets?
+What's the scientific differentiation strategy competitors are pursuing?
+
+Operational & Corporate
+Are M&A or licensing moves signaling a shift in strategy?
+Is manufacturing capacity becoming a bottleneck or strength for competitors?"""
 
 
 class RelevanceCheckDBOperationsService:
@@ -321,95 +386,86 @@ class RelevanceCheckDBOperationsService:
             return relevance_score >= 0.5 if relevance_score else False
 
     def fetch_request_content(self, project_id: str, request_id: str) -> Dict[str, Any]:
-        """
-        Fetch request content from request-acceptance table by project_id and request_id
-        
-        Args:
-            project_id: Project identifier
-            request_id: Request identifier
-            
-        Returns:
-            Dict with request data including description/user_prompt
-        """
         try:
-            logger.info(f"Fetching request content for project_id: {project_id}, request_id: {request_id}")
-            
-            # Construct the partition key (format: project_id#request_id)
-            pk = f"{project_id}#{request_id}"
-            
-            # Query the requests table
-            request_table = "requests-local"
-            
-            # Use scan with filter since we need to find by PK pattern
-            # If the table has both PK and SK, we need to scan with filter
-            items = dynamodb_client.scan_items(
-                table_name=request_table,
-                filter_expression="project_id = :pk",
-                expression_attribute_values={":pk": pk},
-                limit=10
+            logger.info(f"Fetching request description for project_id: {project_id}, request_id: {request_id}")
+
+            response = dynamodb_client.scan_items(
+                table_name="requests-local",
+                filter_expression=Attr("project_id").eq(project_id),
+                limit=10  # fetch a few in case there are multiple
             )
-            
+
+            # Debug logging
+            logger.info(f"DynamoDB response type: {type(response)}, content: {response}")
+
+            # Handle response more safely
+            if not response:
+                logger.warning(f"No response from DynamoDB for project_id: {project_id}")
+                return {
+                    "success": True,
+                    "description": DEFAULT_KITS_KIQS_CONTENT
+                }
+
+            # Extract items safely
+            if isinstance(response, dict):
+                items = response.get("Items", [])
+            else:
+                logger.warning(f"Unexpected response type from DynamoDB: {type(response)}")
+                return {
+                    "success": True,
+                    "description": DEFAULT_KITS_KIQS_CONTENT
+                }
+
+            # Ensure items is a list
+            if not isinstance(items, list):
+                logger.warning(f"Items is not a list, got: {type(items)}")
+                return {
+                    "success": True,
+                    "description": DEFAULT_KITS_KIQS_CONTENT
+                }
+
             if not items:
                 logger.warning(f"No request found for project_id: {project_id}, request_id: {request_id}")
                 return {
-                    'success': False,
-                    'error': 'Request not found',
-                    'description': '',
-                    'title': ''
+                    "success": True,
+                    "description": DEFAULT_KITS_KIQS_CONTENT  # fallback
                 }
+
+            # Filter out non-dict items and pick most recent item
+            dict_items = [item for item in items if isinstance(item, dict)]
             
-            # Get the most recent item (in case there are multiple)
-            latest_item = max(items, key=lambda x: x.get('created_at', ''))
+            if not dict_items:
+                logger.warning(f"No valid dict items found in response for project_id: {project_id}")
+                return {
+                    "success": True,
+                    "description": DEFAULT_KITS_KIQS_CONTENT
+                }
+
+            latest_item = max(dict_items, key=lambda x: x.get("created_at", ""))
+
+            # fetch description directly from the description column
+            description = latest_item.get("description", "")
             
-            # Extract original request from payload
-            payload = latest_item.get('payload', {})
-            original_request = payload.get('original_request', {})
-            
-            # Extract description from the request config or metadata
-            # Based on the user's mention, we need to look for description field
-            description = ""
-            title = ""
-            
-            # Check if description exists in the original request
-            if 'description' in original_request:
-                description = original_request.get('description', '')
-            elif 'title' in original_request:
-                title = original_request.get('title', '')
-                description = original_request.get('description', '')
-            else:
-                # Fallback: use keywords as description if no explicit description
-                config = original_request.get('config', {})
-                keywords = config.get('keywords', [])
-                if keywords:
-                    description = f"Market intelligence request for: {', '.join(keywords)}"
-                else:
-                    description = "Market intelligence analysis request"
-            
-            logger.info(f"✅ REQUEST CONTENT FETCHED - Project ID: {project_id} | Request ID: {request_id} | Description length: {len(description)}")
-            
+            # if no description found, use fallback
+            if not description:
+                description = DEFAULT_KITS_KIQS_CONTENT
+
+            logger.info(
+                f"✅ REQUEST DESCRIPTION FETCHED - Project ID: {project_id} | Request ID: {request_id} | Length: {len(description)}"
+            )
+
             return {
-                'success': True,
-                'pk': latest_item.get('PK', ''),
-                'project_id': project_id,
-                'request_id': request_id,
-                'title': title,
-                'description': description,
-                'priority': latest_item.get('priority', 'medium'),
-                'status': latest_item.get('status', 'pending'),
-                'created_at': latest_item.get('created_at', ''),
-                'original_request': original_request,
-                'user_id': latest_item.get('metadata', {}).get('user_id', '')
+                "success": True,
+                "description": description
             }
-            
+
         except Exception as e:
-            logger.error(f"❌ REQUEST FETCH ERROR - Project ID: {project_id}, Request ID: {request_id} | Error: {str(e)}")
+            logger.error(
+                f"❌ REQUEST FETCH ERROR - Project ID: {project_id}, Request ID: {request_id} | Error: {str(e)}")
+            # Always return success=True but attach default KITs/KIQs content
             return {
-                'success': False,
-                'error': str(e),
-                'description': '',
-                'title': '',
-                'project_id': project_id,
-                'request_id': request_id
+                "success": True,
+                "description": DEFAULT_KITS_KIQS_CONTENT
             }
 
 

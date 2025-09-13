@@ -117,7 +117,7 @@ class RegenerateImplicationsService:
                 return None
             
             # Get the most recent implication (assuming there might be multiple)
-            latest_item = max(items, key=lambda x: x.get('created_at', ''))
+            latest_item = max(items, key=lambda x: x.get('created_at', '') if isinstance(x, dict) else "")
             
             # Extract the implication text
             summary = latest_item.get('implication_text', '') or latest_item.get('content', '')
@@ -270,7 +270,7 @@ Generate enhanced strategic implications that specifically address the user's re
             )
             
             # Sort by creation time (newest first) and limit
-            sorted_items = sorted(items, key=lambda x: x.get('created_at', ''), reverse=True)[:limit]
+            sorted_items = sorted(items, key=lambda x: x.get('created_at', '') if isinstance(x, dict) else "", reverse=True)[:limit]
             
             return {
                 "success": True,
