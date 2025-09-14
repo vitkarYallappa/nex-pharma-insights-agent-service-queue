@@ -1,6 +1,6 @@
 """
 Database Operations Service for Insight Queue
-Handles DynamoDB operations for content_insight-local table
+Handles DynamoDB operations for content_insight table
 """
 from typing import Dict, Any, Optional
 from datetime import datetime
@@ -19,11 +19,11 @@ class InsightDBOperationsService:
     def __init__(self):
         self.service_name = "Insight DB Operations Service"
         # DynamoDB table name
-        self.content_insight_table = "content_insight-local"
+        self.content_insight_table = "content_insight"
     
     def process_insight_completion(self, insight_data: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Process Insight completion and store data in content_insight-local table
+        Process Insight completion and store data in content_insight table
         
         Args:
             insight_data: Complete Insight processing result
@@ -84,7 +84,7 @@ class InsightDBOperationsService:
     
     def _store_content_insight(self, insight_data: Dict[str, Any], content_id: str) -> Dict[str, Any]:
         """
-        Store data in content_insight-local table
+        Store data in content_insight table
         
         Args:
             insight_data: Insight processing result

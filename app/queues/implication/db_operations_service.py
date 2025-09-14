@@ -16,7 +16,7 @@ class ImplicationDBOperationsService:
         self.dynamodb_client = DynamoDBClient()
         
         # DynamoDB table name for implications
-        self.implication_table = "content_implication-local"
+        self.implication_table = "content_implication"
         
         logger.info(f"Initialized {self.service_name}")
     
@@ -50,7 +50,7 @@ class ImplicationDBOperationsService:
                 "implication_content_file_path": None,
                 "implication_type": "bedrock_generated",
                 "priority_level": "medium",
-                "confidence_score": 0.8,
+                "confidence_score": "0.8",
                 "version": 1,
                 "is_canonical": True,
                 "preferred_choice": True,

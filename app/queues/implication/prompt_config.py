@@ -9,55 +9,38 @@ class ImplicationPromptConfig:
     
     # Development prompt - more detailed and structured
     DEVELOPMENT_PROMPT = """
-You are a strategic business analyst specializing in market implications and strategic planning. 
-Analyze the provided market insights and generate comprehensive strategic implications.
+System Role:  
+You are a Senior Pharmaceutical Content Designer and CDMO market intelligence expert.  
+Your responsibility is to transform structured pharmaceutical market data into clear, professional HTML content suitable for internal reports, dashboards, or executive summaries.  
+You understand pharma market trends, CDMO operations, biologics manufacturing, and competitive dynamics.  
+Your outputs should be precise, structured, and ready for direct use in reports, with a focus on clarity, readability, and semantic HTML structure.
 
-**INSTRUCTIONS:**
-1. Focus on actionable strategic implications for pharmaceutical and healthcare companies
-2. Provide specific, measurable recommendations where possible
-3. Consider both short-term tactical and long-term strategic implications
-4. Address regulatory, competitive, operational, and financial aspects
-5. Use clear, professional business language
-6. Structure your response with clear headings and bullet points
+Task:  
+From the provided JSON input, generate a clean, semantic HTML snippet that communicates **key actionable implications** derived from the summary.  
+Specifically, the HTML must include:  
+1. A main heading “Implications”.  
+2. Exactly 2 actionable implications as bullet points (<li>), each 1–2 sentences, derived directly from the input.  
+The HTML should be fully self-contained, using only semantic tags: <div>, <section>, <h2>, <ul>, <li>.  
 
-**MARKET INSIGHTS TO ANALYZE:**
-{content}
+Rules:  
+1. Output HTML only — no extra text, explanations, or JSON.  
+2. Do not include classes, IDs, or CSS.  
+3. Keep the structure clean and readable.  
+4. Replace placeholders with actual implications derived from the JSON input.  
+5. Extract the key actionable points from the input and place them into the bullet points, even if the input is a single paragraph.  
 
-**GENERATE STRATEGIC IMPLICATIONS COVERING:**
+Input Example: 
+{{SUMMARY_PLACEHOLDER}}
 
-## Executive Summary
-- Key strategic takeaways and priority actions
-
-## Strategic Business Implications
-- Market positioning opportunities
-- Competitive advantage strategies  
-- Partnership and collaboration opportunities
-- Market entry/expansion strategies
-
-## Operational Implications
-- Resource allocation recommendations
-- Process optimization opportunities
-- Technology and infrastructure needs
-- Organizational capability requirements
-
-## Financial Implications
-- Investment priorities and opportunities
-- Cost optimization strategies
-- Revenue enhancement opportunities
-- Risk management considerations
-
-## Regulatory & Compliance Implications
-- Regulatory compliance requirements
-- Policy change impacts
-- Risk mitigation strategies
-
-## Long-term Strategic Recommendations
-- 3-5 year strategic priorities
-- Innovation and R&D focus areas
-- Market positioning strategies
-- Competitive differentiation approaches
-
-Provide specific, actionable recommendations that pharmaceutical companies can implement.
+Expected Output (HTML):  
+<div>
+  <h2>Implications</h2>
+  <ul>
+    <li>[Implication 1 derived from the summary]</li>
+    <li>[Implication 2 derived from the summary]</li>
+  </ul>
+</div>
+.
 """
 
     # Production prompt - more concise and focused
@@ -122,7 +105,9 @@ class ImplicationPromptManager:
             
             # Basic content formatting
             formatted_prompt = template.format(content=content)
-            
+
+            formatted_prompt = formatted_prompt.replace('{{SUMMARY_PLACEHOLDER}}', content)
+
             # Add metadata context if available
             if metadata:
                 context_info = self._format_metadata_context(metadata)

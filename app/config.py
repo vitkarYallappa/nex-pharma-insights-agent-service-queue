@@ -14,19 +14,19 @@ class TableNames:
     
     @staticmethod
     def get_users_table(env: str) -> str:
-        return f"users_{env}"
+        return f"users"
     
     @staticmethod
     def get_projects_table(env: str) -> str:
-        return f"projects_{env}"
+        return f"projects"
     
     @staticmethod
     def get_requests_table(env: str) -> str:
-        return f"requests_{env}"
+        return f"requests"
     
     @staticmethod
     def get_content_repository_table(env: str) -> str:
-        return f"content_repository_{env}"
+        return f"content_repository"
 
 
 class TableConfig:

@@ -1,6 +1,6 @@
 """
 Database Operations Service for Perplexity Queue
-Handles DynamoDB operations for content_repository-local, content_summary-local, and related tables
+Handles DynamoDB operations for content_repository, content_summary, and related tables
 """
 from typing import Dict, Any, List, Optional
 from datetime import datetime
@@ -19,10 +19,10 @@ class PerplexityDBOperationsService:
     def __init__(self):
         self.service_name = "Perplexity DB Operations Service"
         # DynamoDB table names
-        self.content_repository_table = "content_repository-local"
-        self.content_summary_table = "content_summary-local"
-        self.content_url_mapping_table = "content_url_mapping-local"
-        self.content_repository_metadata_table = "content_repository_metadata-local"
+        self.content_repository_table = "content_repository"
+        self.content_summary_table = "content_summary"
+        self.content_url_mapping_table = "content_url_mapping"
+        self.content_repository_metadata_table = "content_repository_metadata"
     
     def process_perplexity_completion(self, perplexity_data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -81,7 +81,7 @@ class PerplexityDBOperationsService:
     
     def _store_content_repository(self, perplexity_data: Dict[str, Any], shared_uuid: uuid.UUID) -> Dict[str, Any]:
         """
-        Store data in content_repository-local table
+        Store data in content_repository table
         
         Args:
             perplexity_data: Perplexity processing result
@@ -105,7 +105,7 @@ class PerplexityDBOperationsService:
                 'canonical_url': url_data.get('url', ''),
                 'title': url_data.get('title', ''),
                 'content_hash': content_hash,
-                'source_type': url_data.get('source', 'perplexity'),
+                'source_type': url_data.get('source', 'Web'),
                 'version': 1,
                 'is_canonical': True,
                 'relevance_type': 'high' if url_data.get('relevance_score', 0.0) > 0.7 else 'medium',
@@ -137,7 +137,7 @@ class PerplexityDBOperationsService:
     
     def _store_content_summary(self, perplexity_data: Dict[str, Any], shared_uuid: uuid.UUID) -> Dict[str, Any]:
         """
-        Store data in content_summary-local table
+        Store data in content_summary table
         
         Args:
             perplexity_data: Perplexity processing result
@@ -158,9 +158,9 @@ class PerplexityDBOperationsService:
                 'pk': str(uuid.uuid4()),
                 'url_id': str(shared_uuid),
                 'content_id': str(shared_uuid),
-                'summary_text': self._extract_summary(perplexity_response),
+                'summary_text': perplexity_response,
                 'summary_content_file_path': f"summaries/{project_id}/{request_id}/summary.json",
-                'confidence_score': self._calculate_quality_score(perplexity_data),
+                'confidence_score': "no-added",
                 'version': 1,
                 'is_canonical': True,
                 'preferred_choice': True,
@@ -192,7 +192,7 @@ class PerplexityDBOperationsService:
     
     def _store_content_url_mapping(self, perplexity_data: Dict[str, Any], shared_uuid: uuid.UUID) -> Dict[str, Any]:
         """
-        Store data in content_url_mapping-local table
+        Store data in content_url_mapping table
         
         Args:
             perplexity_data: Perplexity processing result
@@ -216,7 +216,7 @@ class PerplexityDBOperationsService:
                 'content_id': str(shared_uuid),
                 'source_domain': self._extract_domain(url),
                 'is_canonical': True,
-                'dedup_confidence': url_data.get('relevance_score', 0.0),
+                'dedup_confidence': 'Zero',
                 'dedup_method': 'perplexity_analysis',
                 'discovered_at': now
             }
@@ -349,7 +349,7 @@ class PerplexityDBOperationsService:
             return "unknown"
 
     def _store_content_metadata(self, perplexity_data: Dict[str, Any], shared_uuid: uuid.UUID) -> Dict[str, Any]:
-        """Store metadata in content_repository_metadata-local table"""
+        """Store metadata in content_repository_metadata table"""
         try:
             project_id = perplexity_data.get('project_id')
             request_id = perplexity_data.get('request_id')
@@ -373,13 +373,13 @@ class PerplexityDBOperationsService:
                 }
 
             # Store in DynamoDB
-            success = dynamodb_client.put_item(self.content_url_mapping_table, metadata_items)
+            success = dynamodb_client.put_item(self.content_repository_metadata_table, metadata_items)
 
             if success:
                 logger.info(f"Stored content metadata item: {metadata_items['pk']}")
                 return {
                     'success': True,
-                    'table_name': self.content_url_mapping_table,
+                    'table_name': self.content_repository_metadata_table,
                     'item_key': metadata_items['pk'],
                     'message': 'Content metadata stored successfully'
                 }

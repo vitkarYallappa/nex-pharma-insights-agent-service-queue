@@ -1,6 +1,6 @@
 """
 Database Operations Service for Relevance Check Queue
-Handles DynamoDB operations for content_relevance-local table
+Handles DynamoDB operations for content_relevance table
 """
 from typing import Dict, Any, Optional
 from datetime import datetime
@@ -84,11 +84,11 @@ class RelevanceCheckDBOperationsService:
     def __init__(self):
         self.service_name = "Relevance Check DB Operations Service"
         # DynamoDB table name
-        self.content_relevance_table = "content_relevance-local"
+        self.content_relevance_table = "content_relevance"
     
     def process_relevance_completion(self, relevance_data: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Process Relevance Check completion and store data in content_relevance-local table
+        Process Relevance Check completion and store data in content_relevance table
         
         Args:
             relevance_data: Complete Relevance Check processing result
@@ -149,7 +149,7 @@ class RelevanceCheckDBOperationsService:
     
     def _store_content_relevance(self, relevance_data: Dict[str, Any], content_id: str) -> Dict[str, Any]:
         """
-        Store data in content_relevance-local table
+        Store data in content_relevance table
         
         Args:
             relevance_data: Relevance Check processing result
@@ -184,7 +184,8 @@ class RelevanceCheckDBOperationsService:
             
             # Determine if content is relevant based on score and analysis
             is_relevant = self._determine_is_relevant(relevance_response, relevance_score)
-            
+
+            update_confidence_score = f"{confidence_score}"
             content_relevance_item = {
                 'pk': relevance_pk,
                 'url_id': content_id,  # Using content_id as url_id for linking
@@ -194,7 +195,7 @@ class RelevanceCheckDBOperationsService:
                 'is_relevant': is_relevant,
                 'relevance_content_file_path': relevance_content_file_path,
                 'relevance_category': relevance_category,
-                'confidence_score': confidence_score,
+                'confidence_score': update_confidence_score,
                 'version': 1,
                 'is_canonical': True,
                 'preferred_choice': True,
@@ -215,7 +216,7 @@ class RelevanceCheckDBOperationsService:
                     'relevance_category': relevance_category,
                     'relevance_score': relevance_score,
                     'is_relevant': is_relevant,
-                    'confidence_score': confidence_score,
+                    'confidence_score': update_confidence_score,
                     'message': 'Content relevance data stored successfully'
                 }
             else:
@@ -389,74 +390,74 @@ class RelevanceCheckDBOperationsService:
         try:
             logger.info(f"Fetching request description for project_id: {project_id}, request_id: {request_id}")
 
-            response = dynamodb_client.scan_items(
-                table_name="requests-local",
-                filter_expression=Attr("project_id").eq(project_id),
-                limit=10  # fetch a few in case there are multiple
-            )
-
-            # Debug logging
-            logger.info(f"DynamoDB response type: {type(response)}, content: {response}")
-
-            # Handle response more safely
-            if not response:
-                logger.warning(f"No response from DynamoDB for project_id: {project_id}")
-                return {
-                    "success": True,
-                    "description": DEFAULT_KITS_KIQS_CONTENT
-                }
-
-            # Extract items safely
-            if isinstance(response, dict):
-                items = response.get("Items", [])
-            else:
-                logger.warning(f"Unexpected response type from DynamoDB: {type(response)}")
-                return {
-                    "success": True,
-                    "description": DEFAULT_KITS_KIQS_CONTENT
-                }
-
-            # Ensure items is a list
-            if not isinstance(items, list):
-                logger.warning(f"Items is not a list, got: {type(items)}")
-                return {
-                    "success": True,
-                    "description": DEFAULT_KITS_KIQS_CONTENT
-                }
-
-            if not items:
-                logger.warning(f"No request found for project_id: {project_id}, request_id: {request_id}")
-                return {
-                    "success": True,
-                    "description": DEFAULT_KITS_KIQS_CONTENT  # fallback
-                }
-
-            # Filter out non-dict items and pick most recent item
-            dict_items = [item for item in items if isinstance(item, dict)]
-            
-            if not dict_items:
-                logger.warning(f"No valid dict items found in response for project_id: {project_id}")
-                return {
-                    "success": True,
-                    "description": DEFAULT_KITS_KIQS_CONTENT
-                }
-
-            latest_item = max(dict_items, key=lambda x: x.get("created_at", ""))
-
-            # fetch description directly from the description column
-            description = latest_item.get("description", "")
-            
-            # if no description found, use fallback
-            if not description:
-                description = DEFAULT_KITS_KIQS_CONTENT
-
-            logger.info(
-                f"✅ REQUEST DESCRIPTION FETCHED - Project ID: {project_id} | Request ID: {request_id} | Length: {len(description)}"
-            )
+            # response = dynamodb_client.scan_items(
+            #     table_name="requests",
+            #     filter_expression=Attr("project_id").eq(project_id),
+            #     limit=10  # fetch a few in case there are multiple
+            # )
+            #
+            # # Debug logging
+            # logger.info(f"DynamoDB response type: {type(response)}, content: {response}")
+            #
+            # # Handle response more safely
+            # if not response:
+            #     logger.warning(f"No response from DynamoDB for project_id: {project_id}")
+            #     return {
+            #         "success": True,
+            #         "description": DEFAULT_KITS_KIQS_CONTENT
+            #     }
+            #
+            # # Extract items safely
+            # if isinstance(response, dict):
+            #     items = response.get("Items", [])
+            # else:
+            #     logger.warning(f"Unexpected response type from DynamoDB: {type(response)}")
+            #     return {
+            #         "success": True,
+            #         "description": DEFAULT_KITS_KIQS_CONTENT
+            #     }
+            #
+            # # Ensure items is a list
+            # if not isinstance(items, list):
+            #     logger.warning(f"Items is not a list, got: {type(items)}")
+            #     return {
+            #         "success": True,
+            #         "description": DEFAULT_KITS_KIQS_CONTENT
+            #     }
+            #
+            # if not items:
+            #     logger.warning(f"No request found for project_id: {project_id}, request_id: {request_id}")
+            #     return {
+            #         "success": True,
+            #         "description": DEFAULT_KITS_KIQS_CONTENT  # fallback
+            #     }
+            #
+            # # Filter out non-dict items and pick most recent item
+            # dict_items = [item for item in items if isinstance(item, dict)]
+            #
+            # if not dict_items:
+            #     logger.warning(f"No valid dict items found in response for project_id: {project_id}")
+            #     return {
+            #         "success": True,
+            #         "description": DEFAULT_KITS_KIQS_CONTENT
+            #     }
+            #
+            # latest_item = max(dict_items, key=lambda x: x.get("created_at", ""))
+            #
+            # # fetch description directly from the description column
+            # description = latest_item.get("description", "")
+            #
+            # # if no description found, use fallback
+            # if not description:
+            #     description = DEFAULT_KITS_KIQS_CONTENT
+            #
+            # logger.info(
+            #     f"✅ REQUEST DESCRIPTION FETCHED - Project ID: {project_id} | Request ID: {request_id} | Length: {len(description)}"
+            # )
 
             return {
                 "success": True,
-                "description": description
+                "description": DEFAULT_KITS_KIQS_CONTENT
             }
 
         except Exception as e:

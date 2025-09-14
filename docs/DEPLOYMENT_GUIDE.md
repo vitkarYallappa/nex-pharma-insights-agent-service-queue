@@ -6,7 +6,7 @@ This guide provides comprehensive instructions for deploying the NEX Pharma Insi
 
 - [Overview](#overview)
 - [Production Deployment (AWS EC2)](#production-deployment-aws-ec2)
-- [Development Setup (Local)](#development-setup-local)
+- [Development Setup (Local)](#development-setup)
 - [Environment Configuration](#environment-configuration)
 - [Testing & Verification](#testing--verification)
 - [Troubleshooting](#troubleshooting)
@@ -271,7 +271,7 @@ LOG_LEVEL=DEBUG
 #### Option A: Local DynamoDB
 ```bash
 # Download and run local DynamoDB
-wget https://s3.us-west-2.amazonaws.com/dynamodb-local/dynamodb_local_latest.tar.gz
+wget https://s3.us-west-2.amazonaws.com/dynamodb/dynamodb_local_latest.tar.gz
 tar -xzf dynamodb_local_latest.tar.gz
 java -Djava.library.path=./DynamoDBLocal_lib -jar DynamoDBLocal.jar -sharedDb -port 8000
 ```

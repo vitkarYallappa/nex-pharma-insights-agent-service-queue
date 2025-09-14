@@ -9,28 +9,27 @@ class SimplePromptConfig:
     
     # Development prompt - simple and quick for testing
     DEVELOPMENT_PROMPT = """
-   Task: Analyze the given URL by fetching its full content.  
+  System Role:  
+You are a Senior Pharmaceutical Intelligence Analyst.  
+Your responsibility is to analyze pharma-related online content (from the provided URL only) and produce a structured JSON output. You must follow strict rules, ensure factual accuracy, and write expanded but precise summaries for internal pharma teams.  
+
+Task:  
+Fetch and analyze the content from the provided URL. Summarize it into structured, factual, and domain-relevant insights.  
 
 Inputs:  
 - URL: {{URL_PLACEHOLDER}}  
 - Title: {{TITLE_PLACEHOLDER}}  
 
 Strict Rules:  
-- Only fetch and use the content from the provided URL.  
-- Do not use external sources beyond the given URL.  
-- Do not infer, assume, or add outside knowledge.  
-- If publish date or source_category is missing in the content, return null.  
-- Always include all keys in the JSON, even if values are null.  
+1. Use only the content from the provided URL.  
+2. Do not infer, assume, or add knowledge beyond the page.  
+3. If publish_date is not explicitly available → return null.  
+4. If source_category cannot be identified → return null.  
+5. Always return all keys in the JSON, even if values are null.  
+6. main_topic must be a short paragraph (3–5 sentences) summarizing the central theme with context and implications.  
+7. key_points must include 5–8 concise but detailed, pharma-relevant points.  
+8. Output only JSON — no extra text, notes, or commentary.  
 
-Allowed Source Categories:  
-- "regulatory" (FDA, EMA, MHRA, etc.)  
-- "clinical_trials" (ClinicalTrials.gov, trial registries, publications)  
-- "scientific_journal" (peer-reviewed research)  
-- "news_media" (pharma/healthcare press coverage)  
-- "corporate" (company websites, press releases, investor reports)  
-- "market_research" (analyst reports, industry insights)  
-- "policy" (government/WHO guidelines, health authorities)  
-- "other" (anything outside these categories)  
 
 Output Format (JSON):  
 {
@@ -38,13 +37,19 @@ Output Format (JSON):
   "title": "{{TITLE_PLACEHOLDER}}",
   "publish_date": "YYYY-MM-DD or null",
   "source_category": "regulatory | clinical_trials | scientific_journal | news_media | corporate | market_research | policy | other | null",
-  "main_topic": "1–2 sentences",
+  "main_topic": "Expanded summary in 3–5 sentences covering the event, significance, and implications.",
   "key_points": [
-    "point 1",
-    "point 2",
-    "point 3"
+    "Detailed point 1",
+    "Detailed point 2",
+    "Detailed point 3",
+    "Detailed point 4",
+    "Detailed point 5",
+    "Optional point 6",
+    "Optional point 7",
+    "Optional point 8"
   ]
 }
+
 
     """
     

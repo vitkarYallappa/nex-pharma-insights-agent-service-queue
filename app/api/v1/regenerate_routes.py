@@ -23,13 +23,12 @@ async def regenerate_insights(
     background_tasks: BackgroundTasks
 ):
     """
-    Regenerate insights based on existing summary and user prompt.
+    Regenerate insights by processing large text input with Bedrock.
     
     This endpoint:
-    1. Fetches existing summary from insights table by content_id
-    2. Combines user prompt with prefix/postfix prompts
-    3. Calls Bedrock service to generate new insights
-    4. Stores the regenerated insights in regenerate_insights table
+    1. Takes content_id and large text input from user
+    2. Directly calls Bedrock service to process the text
+    3. Stores the regenerated insights in regenerate_insights table
     """
     try:
         logger.info(f"Received regenerate insights request for content_id: {request.content_id}")
@@ -40,7 +39,7 @@ async def regenerate_insights(
         # Process the regeneration request
         result = await regenerate_service.regenerate_insights(
             content_id=request.content_id,
-            user_prompt=request.user_prompt,
+            text_input=request.text_input,
             metadata=request.metadata
         )
         
@@ -50,9 +49,7 @@ async def regenerate_insights(
             return RegenerateResponse(
                 success=True,
                 content_id=request.content_id,
-                regeneration_id=result.get("regeneration_id"),
-                regenerated_content=result.get("regenerated_insights"),
-                processing_metadata=result.get("processing_metadata", {})
+                regenerated_content=result.get("regenerated_insights")
             )
         else:
             logger.error(f"Failed to regenerate insights: {result.get('error')}")
@@ -78,13 +75,12 @@ async def regenerate_implications(
     background_tasks: BackgroundTasks
 ):
     """
-    Regenerate implications based on existing summary and user prompt.
+    Regenerate implications by processing large text input with Bedrock.
     
     This endpoint:
-    1. Fetches existing summary from implications table by content_id
-    2. Combines user prompt with prefix/postfix prompts
-    3. Calls Bedrock service to generate new implications
-    4. Stores the regenerated implications in regenerate_implications table
+    1. Takes content_id and large text input from user
+    2. Directly calls Bedrock service to process the text
+    3. Returns the regenerated implications
     """
     try:
         logger.info(f"Received regenerate implications request for content_id: {request.content_id}")
@@ -95,7 +91,7 @@ async def regenerate_implications(
         # Process the regeneration request
         result = await regenerate_service.regenerate_implications(
             content_id=request.content_id,
-            user_prompt=request.user_prompt,
+            text_input=request.text_input,
             metadata=request.metadata
         )
         
@@ -105,9 +101,7 @@ async def regenerate_implications(
             return RegenerateResponse(
                 success=True,
                 content_id=request.content_id,
-                regeneration_id=result.get("regeneration_id"),
-                regenerated_content=result.get("regenerated_implications"),
-                processing_metadata=result.get("processing_metadata", {})
+                regenerated_content=result.get("regenerated_implications")
             )
         else:
             logger.error(f"Failed to regenerate implications: {result.get('error')}")

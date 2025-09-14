@@ -9,36 +9,56 @@ class InsightPromptConfig:
     
     # Development prompt - simple and quick for testing
     DEVELOPMENT_PROMPT = """
-    Generate market insights from this research data:
-    
-    URL: {url}
-    Title: {title}
-    
-    Research Data:
-    {perplexity_response}
-    
-    Please provide:
-    1. Key market trend (1-2 sentences)
-    2. Main opportunities (2-3 bullet points)
-    3. Competitive landscape (brief overview)
-    
-    
-    Please provide the response strictly in the following HTML format:
+    System Role:  
+You are a Senior Pharmaceutical Content Designer and CDMO market intelligence expert.  
+Your responsibility is to transform structured pharmaceutical market data into clear, professional HTML content suitable for internal reports, dashboards, or executive summaries.  
+You understand pharma market trends, CDMO operations, biologics manufacturing, and competitive dynamics.  
+Your outputs should be precise, structured, and ready for direct use in reports, with a focus on clarity, readability, and semantic HTML structure.
 
+Task:  
+From the provided JSON input, generate a clean, semantic HTML snippet that communicates key CDMO market insights.  
+Specifically, the HTML must include:  
+1. Key market trend — summarize the most critical market developments in 1–2 sentences.  
+2. Main opportunities — present 3 actionable opportunities as bullet points.  
+3. Competitive landscape — summarize the competitive situation in a concise paragraph.  
+The HTML should be fully self-contained, using only semantic tags: <div>, <section>, <h2>, <h3>, <p>, <ul>, <li>.  
+
+Rules:  
+1. Output HTML only — no extra text, explanations, or JSON.  
+2. Do not include classes, IDs, or CSS.  
+3. Keep the structure clean and readable.  
+4. Replace placeholders with the actual text from the JSON input.  
+5. Extract the key points from the input and place them into the appropriate sections, even if the input is a single paragraph.  
+
+Input Example: 
+URL: {{URL_PLACEHOLDER}}
+Title: {{TITLE_PLACEHOLDER}} 
+{{SUMMARY_PLACEHOLDER}}
+
+Expected Output (HTML):  
 <div>
-  <p><strong>Key market trend:</strong></p>
-  <p>[1–2 sentences describing the key market trend]</p>
+  <h2>Market Insight</h2>
 
-  <p><strong>Main opportunities:</strong></p>
-  <ul>
-    <li>[Opportunity 1]</li>
-    <li>[Opportunity 2]</li>
-    <li>[Opportunity 3]</li>
-  </ul>
+  <section>
+    <h3>Key market trend</h3>
+    <p>The CDMO market is experiencing rapid growth driven by biologics and personalized therapies.</p>
+  </section>
 
-  <p><strong>Competitive landscape:</strong></p>
-  <p>[Brief overview of the competitive landscape]</p>
+  <section>
+    <h3>Main opportunities</h3>
+    <ul>
+      <li>Expansion of mRNA and gene therapy production capabilities</li>
+      <li>Strategic partnerships with biotech and pharma companies</li>
+      <li>Investment in single-use and modular manufacturing technologies</li>
+    </ul>
+  </section>
+
+  <section>
+    <h3>Competitive landscape</h3>
+    <p>Several mid-size CDMOs are entering the biologics space, increasing competition and driving innovation in manufacturing processes.</p>
+  </section>
 </div>
+
     """
     
     # Production prompt - comprehensive for real analysis
@@ -117,16 +137,26 @@ class InsightPromptManager:
             prompt_template = InsightPromptConfig.PRODUCTION_PROMPT
         else:
             prompt_template = InsightPromptConfig.DEVELOPMENT_PROMPT
-        
-        # Format the prompt with actual data
-        return prompt_template.format(
-            url=url,
-            title=title,
-            user_prompt=user_prompt or 'No specific query provided',
-            content_id=content_id or 'Unknown',
-            perplexity_response=perplexity_response or 'No research data available'
-        ).strip()
-    
+
+        try:
+            prompt = prompt_template.replace('{{URL_PLACEHOLDER}}', url)
+            prompt = prompt.replace('{{TITLE_PLACEHOLDER}}', title)
+            prompt = prompt.replace('{{SUMMARY_PLACEHOLDER}}', perplexity_response)
+
+            return prompt.strip()
+        except Exception as e:
+            # Log the error and return a fallback prompt
+            print(f"Error formatting prompt: {e}")
+            fallback_prompt = f"""
+            Analyze this pharmaceutical/healthcare URL:
+
+            URL: {url}
+            Title: {title}
+
+            Please provide a comprehensive analysis focusing on pharmaceutical market intelligence.
+            """
+            return fallback_prompt.strip()
+
     @staticmethod
     def get_available_modes() -> list:
         """Get list of available prompt modes"""

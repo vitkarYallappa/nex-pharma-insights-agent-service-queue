@@ -137,8 +137,8 @@ class ImplicationPayload(BaseModel):
 
 class RegenerateInsightsRequest(BaseModel):
     """Request model for regenerating insights"""
-    content_id: str = Field(..., description="Content ID to fetch existing summary for")
-    user_prompt: str = Field(..., description="User's custom prompt for regeneration")
+    content_id: str = Field(..., description="Content ID for tracking and identification")
+    text_input: str = Field(..., description="Large text input to be processed by Bedrock")
     metadata: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Additional metadata")
     
     @validator('content_id')
@@ -147,19 +147,19 @@ class RegenerateInsightsRequest(BaseModel):
             raise ValueError('content_id cannot be empty')
         return v.strip()
     
-    @validator('user_prompt')
-    def validate_user_prompt(cls, v):
+    @validator('text_input')
+    def validate_text_input(cls, v):
         if not v or not v.strip():
-            raise ValueError('user_prompt cannot be empty')
+            raise ValueError('text_input cannot be empty')
         if len(v.strip()) < 10:
-            raise ValueError('user_prompt must be at least 10 characters long')
+            raise ValueError('text_input must be at least 10 characters long')
         return v.strip()
 
 
 class RegenerateImplicationsRequest(BaseModel):
     """Request model for regenerating implications"""
-    content_id: str = Field(..., description="Content ID to fetch existing summary for")
-    user_prompt: str = Field(..., description="User's custom prompt for regeneration")
+    content_id: str = Field(..., description="Content ID for tracking and identification")
+    text_input: str = Field(..., description="Large text input to be processed by Bedrock")
     metadata: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Additional metadata")
     
     @validator('content_id')
@@ -168,23 +168,20 @@ class RegenerateImplicationsRequest(BaseModel):
             raise ValueError('content_id cannot be empty')
         return v.strip()
     
-    @validator('user_prompt')
-    def validate_user_prompt(cls, v):
+    @validator('text_input')
+    def validate_text_input(cls, v):
         if not v or not v.strip():
-            raise ValueError('user_prompt cannot be empty')
+            raise ValueError('text_input cannot be empty')
         if len(v.strip()) < 10:
-            raise ValueError('user_prompt must be at least 10 characters long')
+            raise ValueError('text_input must be at least 10 characters long')
         return v.strip()
 
 
 class RegenerateResponse(BaseModel):
-    """Response model for regeneration requests"""
+    """Simple response model for regeneration requests"""
     success: bool = Field(..., description="Whether the regeneration was successful")
     content_id: str = Field(..., description="Content ID that was processed")
-    regeneration_id: Optional[str] = Field(None, description="Unique ID for this regeneration")
     regenerated_content: Optional[str] = Field(None, description="The regenerated content")
-    error_message: Optional[str] = Field(None, description="Error message if failed")
-    processing_metadata: Dict[str, Any] = Field(default_factory=dict, description="Processing metadata")
 
 
 class RegenerationHistoryResponse(BaseModel):

@@ -20,6 +20,7 @@ class SerpWorker(BaseWorker):
     def process_item(self, item: Dict[str, Any]) -> bool:
         """Process a SERP item - simplified workflow without API calls"""
         try:
+
             payload = item.get('payload', {})
             
             # Extract basic information from payload
@@ -32,6 +33,9 @@ class SerpWorker(BaseWorker):
                 return False
             
             source_name = source.get('name', 'Unknown')
+            logger.info(f" ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::"
+                        f"Processing SERP for source: {source_name} with {len(keywords)} keywords"
+                        f"::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::")
             logger.info(f"Processing SERP for source: {source_name} with {len(keywords)} keywords")
             
             # Use real SERP API to get search results
@@ -189,7 +193,7 @@ class SerpWorker(BaseWorker):
             return
         
         # Apply URL limit from configuration
-        max_urls = QUEUE_PROCESSING_LIMITS.get('max_perplexity_urls_per_serp', 1)
+        max_urls = 3
         
         if len(urls_with_data) > max_urls:
             logger.info(f"Found {len(urls_with_data)} URLs, limiting to top {max_urls} for Perplexity processing")
