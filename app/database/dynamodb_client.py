@@ -23,53 +23,32 @@ class DynamoDBClient:
     """DynamoDB client for queue operations"""
     
     def __init__(self):
-        # For local DynamoDB, use proper dummy credentials that boto3 accepts
-        if settings.dynamodb_endpoint or settings.dynamodb_endpoint_url:
-            # Local DynamoDB - use dummy credentials that boto3 accepts
-            aws_access_key = settings.aws_access_key_id or "local"
-            aws_secret_key = settings.aws_secret_access_key or "local"
-            
-            # Ensure credentials are valid format for boto3
-            if aws_access_key in ["dummy", "test","local"]:
-                aws_access_key = "local"
-            if aws_secret_key in ["dummy", "test","local"]:
-                aws_secret_key = "local"
-                
-            endpoint_url = settings.dynamodb_endpoint or settings.dynamodb_endpoint_url
-            region = settings.dynamodb_region or settings.aws_region
-                
-            self.dynamodb = boto3.resource(
-                'dynamodb',
-                endpoint_url=endpoint_url,
-                aws_access_key_id=aws_access_key,
-                aws_secret_access_key=aws_secret_key,
-                region_name=region
+        # Global environment setting
+        self.global_environment = getattr(settings, 'GLOBAL_ENVIRONMENT', 'local')
+        
+        logger.info(f"Global environment: {self.global_environment}")
+        
+        if self.global_environment.lower() == 'local':
+            # Local development - use explicit credentials and local endpoint
+            logger.info("Using local environment setup with explicit credentials")
+            self.session = boto3.Session(
+                aws_access_key_id=settings.aws_access_key_id,
+                aws_secret_access_key=settings.aws_secret_access_key,
+                region_name=settings.aws_region
             )
-            self.client = boto3.client(
-                'dynamodb',
-                endpoint_url=endpoint_url,
-                aws_access_key_id=aws_access_key,
-                aws_secret_access_key=aws_secret_key,
-                region_name=region
-            )
+            # Use local DynamoDB endpoint
+            self.dynamodb = self.session.resource('dynamodb', endpoint_url=settings.dynamodb_endpoint)
+            self.client = self.session.client('dynamodb', endpoint_url=settings.dynamodb_endpoint)
+        elif self.global_environment.lower() == 'ec2':
+            # EC2 environment - use IAM role
+            logger.info("Using EC2 environment setup with IAM role")
+            self.dynamodb = boto3.resource('dynamodb', region_name=settings.aws_region)
+            self.client = boto3.client('dynamodb', region_name=settings.aws_region)
         else:
-            # AWS DynamoDB - use IAM instance role or explicit credentials
-            # Check if we have explicit credentials
-            if settings.aws_access_key_id and settings.aws_secret_access_key and \
-               settings.aws_access_key_id not in ["local", "dummy", "test"] and \
-               settings.aws_secret_access_key not in ["local", "dummy", "test"]:
-                # Use explicit credentials (for local development)
-                self.session = boto3.Session(
-                    aws_access_key_id=settings.aws_access_key_id,
-                    aws_secret_access_key=settings.aws_secret_access_key,
-                    region_name=settings.aws_region
-                )
-                self.dynamodb = self.session.resource('dynamodb')
-                self.client = self.session.client('dynamodb')
-            else:
-                # Use default credential chain (IAM instance role, environment variables, etc.)
-                self.dynamodb = boto3.resource('dynamodb', region_name=settings.aws_region)
-                self.client = boto3.client('dynamodb', region_name=settings.aws_region)
+            # Default fallback - use global environment setup
+            logger.info(f"Using default environment setup for: {self.global_environment}")
+            self.dynamodb = boto3.resource('dynamodb', region_name=settings.aws_region)
+            self.client = boto3.client('dynamodb', region_name=settings.aws_region)
         
         # Cache table objects
         self._tables = {}

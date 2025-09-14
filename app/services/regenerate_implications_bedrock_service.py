@@ -13,11 +13,14 @@ class RegenerateImplicationsBedrockService:
     
     def __init__(self):
         # Bedrock configuration
-        self.aws_bedrock_agent_id = settings.BEDROCK_AWS_BEDROCK_AGENT_ID or "B7TOHQ5N03"
+        self.aws_bedrock_agent_id = settings.BEDROCK_AWS_BEDROCK_AGENT_ID or "ZHNPJSVGDE"
         self.aws_bedrock_agent_alias_id = settings.BEDROCK_AWS_BEDROCK_AGENT_ALIAS_ID or "KOINO4TU2J"
         self.aws_region = settings.BEDROCK_AWS_REGION or "us-east-1"
         
-        # Bedrock credentials
+        # Global environment setting
+        self.global_environment = getattr(settings, 'GLOBAL_ENVIRONMENT', 'local')
+        
+        # Bedrock credentials (for local development)
         self.aws_access_key_id = settings.BEDROCK_AWS_ACCESS_KEY_ID
         self.aws_secret_access_key = settings.BEDROCK_AWS_SECRET_ACCESS_KEY
         self.aws_session_token = settings.BEDROCK_AWS_SESSION_TOKEN
@@ -30,15 +33,35 @@ class RegenerateImplicationsBedrockService:
             self._create_bedrock_client()
     
     def _create_bedrock_client(self):
-        """Create Bedrock client"""
+        """Create Bedrock client based on GLOBAL_ENVIRONMENT setting"""
         try:
-            self.bedrock_client = boto3.client(
-                "bedrock-agent-runtime",
-                aws_access_key_id=self.aws_access_key_id,
-                aws_secret_access_key=self.aws_secret_access_key,
-                region_name=self.aws_region,
-                aws_session_token=self.aws_session_token if self.aws_session_token else None
-            )
+            logger.info(f"Global environment: {self.global_environment}")
+            
+            if self.global_environment.lower() == 'local':
+                # Local development - use explicit credentials
+                logger.info("Using local environment setup with explicit credentials")
+                self.bedrock_client = boto3.client(
+                    "bedrock-agent-runtime",
+                    aws_access_key_id=self.aws_access_key_id,
+                    aws_secret_access_key=self.aws_secret_access_key,
+                    aws_session_token=self.aws_session_token,
+                    region_name=self.aws_region
+                )
+            elif self.global_environment.lower() == 'ec2':
+                # EC2 environment - use IAM role
+                logger.info("Using EC2 environment setup with IAM role")
+                self.bedrock_client = boto3.client(
+                    "bedrock-agent-runtime",
+                    region_name=self.aws_region
+                )
+            else:
+                # Default fallback - use global environment setup
+                logger.info(f"Using default environment setup for: {self.global_environment}")
+                self.bedrock_client = boto3.client(
+                    "bedrock-agent-runtime",
+                    region_name=self.aws_region
+                )
+            
             logger.info("Bedrock client created successfully")
         except Exception as e:
             logger.error(f"Error creating Bedrock client: {e}")

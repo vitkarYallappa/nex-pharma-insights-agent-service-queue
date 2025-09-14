@@ -16,9 +16,33 @@ class S3Client:
     """S3 client for content storage operations"""
     
     def __init__(self):
-        # Configure credentials based on storage type
-        if settings.STORAGE_TYPE == "minio":
-            # Use MinIO credentials for local development
+        # Global environment setting
+        self.global_environment = getattr(settings, 'GLOBAL_ENVIRONMENT', 'local')
+        
+        logger.info(f"Global environment: {self.global_environment}")
+        
+        # Configure credentials based on environment and storage type
+        # When GLOBAL_ENVIRONMENT is 'ec2', use MinIO regardless of STORAGE_TYPE
+        if self.global_environment.lower() == 'ec2':
+            # EC2 deployment - use MinIO
+            logger.info("Using EC2 environment setup with MinIO")
+            access_key = settings.MINIO_ACCESS_KEY
+            secret_key = settings.MINIO_SECRET_KEY
+            region = settings.aws_region
+            
+            self.session = boto3.Session(
+                aws_access_key_id=access_key,
+                aws_secret_access_key=secret_key,
+                region_name=region
+            )
+            
+            self.client = self.session.client(
+                's3',
+                endpoint_url=settings.s3_endpoint_url
+            )
+        elif settings.STORAGE_TYPE == "minio" or self.global_environment.lower() == 'local':
+            # Local development or explicit MinIO - use MinIO credentials
+            logger.info("Using MinIO storage type for local development")
             access_key = settings.MINIO_ACCESS_KEY
             secret_key = settings.MINIO_SECRET_KEY
             region = settings.aws_region
@@ -34,31 +58,39 @@ class S3Client:
                 endpoint_url=settings.s3_endpoint_url
             )
         else:
-            # AWS S3 - use IAM instance role or explicit credentials
-            # Check if we have explicit credentials
-            if settings.aws_access_key_id and settings.aws_secret_access_key and \
-               settings.aws_access_key_id not in ["local", "dummy", "test"] and \
-               settings.aws_secret_access_key not in ["local", "dummy", "test"]:
-                # Use explicit credentials (for local development)
+            # AWS S3 - use AWS credentials and IAM role
+            logger.info(f"Using AWS S3 for environment: {self.global_environment}")
+            
+            if settings.aws_access_key_id and settings.aws_secret_access_key:
+                # Use explicit credentials if available
+                logger.info("Using explicit AWS credentials")
                 self.session = boto3.Session(
                     aws_access_key_id=settings.aws_access_key_id,
                     aws_secret_access_key=settings.aws_secret_access_key,
                     region_name=settings.aws_region
                 )
                 
-                self.client = self.session.client(
-                    's3',
-                    endpoint_url=settings.s3_endpoint_url
-                )
+                self.client = self.session.client('s3')
             else:
-                # Use default credential chain (IAM instance role, environment variables, etc.)
+                # Use IAM role or default credentials
+                logger.info("Using IAM role or default AWS credentials")
                 self.client = boto3.client(
                     's3',
-                    region_name=settings.aws_region,
-                    endpoint_url=settings.s3_endpoint_url
+                    region_name=settings.aws_region
                 )
         
         self.bucket_name = settings.s3_bucket_name
+        
+        # Log final configuration
+        logger.info(f"S3 Client Configuration:")
+        logger.info(f"  - Bucket Name: {self.bucket_name}")
+        logger.info(f"  - Global Environment: {self.global_environment}")
+        logger.info(f"  - Storage Type: {settings.STORAGE_TYPE}")
+        if hasattr(settings, 's3_endpoint_url') and settings.s3_endpoint_url:
+            logger.info(f"  - Endpoint URL: {settings.s3_endpoint_url}")
+        else:
+            logger.info(f"  - Endpoint URL: AWS S3 (default)")
+        logger.info(f"  - Region: {settings.aws_region}")
     
     def bucket_exists(self) -> bool:
         """Check if the S3 bucket exists"""

@@ -57,6 +57,7 @@ class UnifiedSettings(BaseSettings):
     # Environment Configuration
     ENVIRONMENT: str = Field(default="local")  # local, development, staging, production
     TABLE_ENVIRONMENT: str = Field(default="local")  # local, dev, staging, prod
+    GLOBAL_ENVIRONMENT: str = Field(default="local")  # local, ec2, production - controls AWS service configuration
     DEBUG: bool = Field(default=True)
     
     # ============================================================================
@@ -112,7 +113,7 @@ class UnifiedSettings(BaseSettings):
     MINIO_ENDPOINT: str = Field(default="localhost:9000")
     MINIO_ACCESS_KEY: str = Field(default="minioadmin")
     MINIO_SECRET_KEY: str = Field(default="minioadmin")
-    S3_BUCKET_NAME: str = Field(default="agent-content-bucket")
+    S3_BUCKET_NAME: str = Field(default="nex-pharma-insight-s3-bucket")
     
     # ============================================================================
     # SECURITY CONFIGURATION
@@ -342,7 +343,9 @@ class UnifiedSettings(BaseSettings):
             "openai": bool(self.OPENAI_API_KEY),
             "perplexity": bool(self.PERPLEXITY_API_KEY),
             "serp": bool(self.SERP_API_KEY),
-            "anthropic": bool(self.ANTHROPIC_API_KEY)
+            "anthropic": bool(self.ANTHROPIC_API_KEY),
+            "bedrock_agent_id": bool(self.BEDROCK_AWS_BEDROCK_AGENT_ID),
+            "bedrock_agent_alias_id": bool(self.BEDROCK_AWS_BEDROCK_AGENT_ALIAS_ID)
         }
     
     def get_missing_api_keys(self) -> List[str]:
@@ -433,6 +436,13 @@ def export_to_environment():
         
     if settings.ANTHROPIC_API_KEY and not os.getenv('ANTHROPIC_API_KEY'):
         os.environ['ANTHROPIC_API_KEY'] = settings.ANTHROPIC_API_KEY
+        
+    # Export Bedrock agent configuration
+    if settings.BEDROCK_AWS_BEDROCK_AGENT_ID and not os.getenv('BEDROCK_AWS_BEDROCK_AGENT_ID'):
+        os.environ['BEDROCK_AWS_BEDROCK_AGENT_ID'] = settings.BEDROCK_AWS_BEDROCK_AGENT_ID
+        
+    if settings.BEDROCK_AWS_BEDROCK_AGENT_ALIAS_ID and not os.getenv('BEDROCK_AWS_BEDROCK_AGENT_ALIAS_ID'):
+        os.environ['BEDROCK_AWS_BEDROCK_AGENT_ALIAS_ID'] = settings.BEDROCK_AWS_BEDROCK_AGENT_ALIAS_ID
 
 
 # Auto-validate and export on import (optional - can be disabled in production)

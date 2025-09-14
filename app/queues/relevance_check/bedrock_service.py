@@ -18,98 +18,53 @@ class RelevanceCheckBedrockService:
     def __init__(self):
         self.service_name = "Relevance Check Bedrock Agent Service"
         
-        # Bedrock Agent configuration - using settings from config
-        self.aws_bedrock_agent_id = settings.BEDROCK_AWS_BEDROCK_AGENT_ID or "B7TOHQ5N03"
+        # Bedrock Agent configuration
+        self.aws_bedrock_agent_id = settings.BEDROCK_AWS_BEDROCK_AGENT_ID or "ZHNPJSVGDE"
         self.aws_bedrock_agent_alias_id = settings.BEDROCK_AWS_BEDROCK_AGENT_ALIAS_ID or "KOINO4TU2J"
         self.aws_region = settings.BEDROCK_AWS_REGION or "us-east-1"
         
-        # Bedrock AWS Credentials - using settings from config
+        # Global environment setting
+        self.global_environment = getattr(settings, 'GLOBAL_ENVIRONMENT', 'local')
+        
+        # Bedrock AWS Credentials (for local development)
         self.aws_access_key_id = settings.BEDROCK_AWS_ACCESS_KEY_ID
         self.aws_secret_access_key = settings.BEDROCK_AWS_SECRET_ACCESS_KEY
         self.aws_session_token = settings.BEDROCK_AWS_SESSION_TOKEN
         
-        # Validate credentials are loaded (allow fallback to IAM role)
-        if not self.aws_access_key_id or not self.aws_secret_access_key:
-            logger.error("❌ BEDROCK CREDENTIALS MISSING - Check your .env file for BEDROCK_AWS_ACCESS_KEY_ID and BEDROCK_AWS_SECRET_ACCESS_KEY")
-            
-            # Try manual fallback loading from .env file
-            manual_creds = self._load_credentials_manually()
-            if manual_creds:
-                logger.info("✅ Manual credential loading successful")
-                self.aws_access_key_id = manual_creds.get('access_key')
-                self.aws_secret_access_key = manual_creds.get('secret_key')
-                self.aws_session_token = manual_creds.get('session_token')
-                self.aws_bedrock_agent_id = manual_creds.get('agent_id', self.aws_bedrock_agent_id)
-                self.aws_bedrock_agent_alias_id = manual_creds.get('agent_alias', self.aws_bedrock_agent_alias_id)
-            else:
-                logger.error("❌ Failed to load Bedrock credentials")
-        
-        self.mock_mode = settings.BEDROCK_MOCK_MODE  # Use settings for mock mode
+        # Mock mode setting
+        self.mock_mode = settings.BEDROCK_MOCK_MODE
         
         # Initialize Bedrock Agent client
         self.bedrock_client = None
         self._create_bedrock_client()
-    
-    def _load_credentials_manually(self) -> Optional[Dict[str, str]]:
-        """Manually load Bedrock credentials from .env file as fallback"""
-        try:
-            from pathlib import Path
-            
-            # Look for .env file in multiple locations
-            env_locations = [".env", "../.env", "../../.env"]
-            for env_path in env_locations:
-                env_file = Path(env_path)
-                if env_file.exists():
-                    credentials = {}
-                    with open(env_file, 'r') as f:
-                        for line_num, line in enumerate(f, 1):
-                            line = line.strip()
-                            if '=' in line and not line.startswith('#'):
-                                key, value = line.split('=', 1)
-                                key = key.strip()
-                                value = value.strip().strip('"').strip("'")  # Remove quotes
-                                
-                                if key == 'BEDROCK_AWS_ACCESS_KEY_ID':
-                                    credentials['access_key'] = value
-                                elif key == 'BEDROCK_AWS_SECRET_ACCESS_KEY':
-                                    credentials['secret_key'] = value
-                                elif key == 'BEDROCK_AWS_SESSION_TOKEN':
-                                    credentials['session_token'] = value
-                                elif key == 'BEDROCK_AWS_BEDROCK_AGENT_ID':
-                                    credentials['agent_id'] = value
-                                elif key == 'BEDROCK_AWS_BEDROCK_AGENT_ALIAS_ID':
-                                    credentials['agent_alias'] = value
-                    
-                    if credentials.get('access_key') and credentials.get('secret_key'):
-                        return credentials
-                    
-            return None
-            
-        except Exception as e:
-            logger.error(f"Error loading credentials manually: {e}")
-            return None
+
     
     def _create_bedrock_client(self):
-        """Create and return a Bedrock Agent Runtime client - using your exact working pattern"""
+        """Create Bedrock Agent Runtime client based on GLOBAL_ENVIRONMENT setting"""
         try:
             logger.info("Creating Bedrock Agent Runtime client for relevance check")
+            logger.info(f"Global environment: {self.global_environment}")
             
-            logger.info(f"Initializing Bedrock Agent client for agent: {self.aws_bedrock_agent_id}")
-            
-            # Check if we have explicit credentials
-            if self.aws_access_key_id and self.aws_secret_access_key and \
-               self.aws_access_key_id not in ["local", "dummy", "test"] and \
-               self.aws_secret_access_key not in ["local", "dummy", "test"]:
-                # Use explicit credentials (for local development)
+            if self.global_environment.lower() == 'local':
+                # Local development - use explicit credentials
+                logger.info("Using local environment setup with explicit credentials")
                 self.bedrock_client = boto3.client(
                     "bedrock-agent-runtime",
                     aws_access_key_id=self.aws_access_key_id,
                     aws_secret_access_key=self.aws_secret_access_key,
-                    region_name=self.aws_region,
-                    aws_session_token=self.aws_session_token if self.aws_session_token else None
+                    aws_session_token=self.aws_session_token,
+                    region_name=self.aws_region
+                )
+            elif self.global_environment.lower() == 'ec2':
+                # EC2 environment - use IAM role
+                logger.info("Using EC2 environment setup with IAM role")
+                self.bedrock_client = boto3.client(
+                    "bedrock-agent-runtime",
+                    region_name=self.aws_region
                 )
             else:
-                # Use default credential chain (IAM instance role, environment variables, etc.)
+                # Default fallback - use global environment setup
+                logger.info(f"Using default environment setup for: {self.global_environment}")
                 self.bedrock_client = boto3.client(
                     "bedrock-agent-runtime",
                     region_name=self.aws_region
