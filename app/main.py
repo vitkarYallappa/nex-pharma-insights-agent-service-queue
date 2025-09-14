@@ -7,7 +7,7 @@ from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from config import settings
+from app.config import settings
 from app.utils.logger import get_logger, setup_logging
 from app.api.v1.routes import router as api_router
 from app.api.v1.migration_routes import router as migration_router
