@@ -1,0 +1,236 @@
+# ============================================================================
+# NEX PHARMA INSIGHTS AGENT SERVICE - ENVIRONMENT CONFIGURATION TEMPLATE
+# ============================================================================
+# Copy this file to .env and update the values for your environment
+# Different configurations for local, staging, and production environments
+
+# ============================================================================
+# ENVIRONMENT SELECTION
+# ============================================================================
+# Options: local, development, staging, production
+ENVIRONMENT=local
+TABLE_ENVIRONMENT=local
+GLOBAL_ENVIRONMENT=local
+DEBUG=true
+
+# ============================================================================
+# PROJECT INFORMATION
+# ============================================================================
+PROJECT_NAME=NEX Pharma Insights Agent Service
+VERSION=1.0.0
+DESCRIPTION=AI-powered pharmaceutical market intelligence platform
+
+# ============================================================================
+# SERVER CONFIGURATION
+# ============================================================================
+HOST=0.0.0.0
+PORT=8005
+
+# API Configuration
+API_V1_PREFIX=/api/v1
+DOCS_URL=/docs
+REDOC_URL=/redoc
+
+# ============================================================================
+# AWS CONFIGURATION
+# ============================================================================
+# AWS Region
+AWS_REGION=us-east-1
+
+# AWS Credentials (for local development only)
+# In production, use IAM roles instead of hardcoded credentials
+AWS_ACCESS_KEY_ID=local
+AWS_SECRET_ACCESS_KEY=local
+
+# Bedrock Model Configuration
+BEDROCK_MODEL_ID=anthropic.claude-3-sonnet-20240229-v1:0
+
+# ============================================================================
+# BEDROCK CONFIGURATION
+# ============================================================================
+BEDROCK_MOCK_MODE=false
+BEDROCK_AWS_REGION=us-east-1
+BEDROCK_AWS_ACCESS_KEY_ID=
+BEDROCK_AWS_SECRET_ACCESS_KEY=
+BEDROCK_AWS_SESSION_TOKEN=
+
+# Bedrock Agent Configuration (required for production)
+BEDROCK_AWS_BEDROCK_AGENT_ID=your-bedrock-agent-id-here
+BEDROCK_AWS_BEDROCK_AGENT_ALIAS_ID=your-bedrock-agent-alias-id-here
+
+# ============================================================================
+# DATABASE CONFIGURATION
+# ============================================================================
+DATABASE_TYPE=dynamodb
+DYNAMODB_REGION=us-east-1
+
+# Local DynamoDB (for development)
+DYNAMODB_ENDPOINT=http://localhost:8000
+
+# ============================================================================
+# STORAGE CONFIGURATION
+# ============================================================================
+# Options: minio (local), s3 (production)
+STORAGE_TYPE=minio
+
+# MinIO Configuration (for local development)
+MINIO_ENDPOINT=localhost:9000
+MINIO_ACCESS_KEY=minioadmin
+MINIO_SECRET_KEY=minioadmin
+
+# S3 Configuration (for production)
+S3_BUCKET_NAME=nex-pharma-insight-s3-bucket
+
+# ============================================================================
+# EXTERNAL API KEYS
+# ============================================================================
+# OpenAI Configuration
+OPENAI_API_KEY=your-openai-api-key-here
+OPENAI_MODEL=gpt-4
+
+# Perplexity AI API Key
+PERPLEXITY_API_KEY=your-perplexity-api-key-here
+
+# SERP API Key (for search results)
+SERP_API_KEY=your-serp-api-key-here
+
+# Anthropic API Key
+ANTHROPIC_API_KEY=your-anthropic-api-key-here
+
+# ============================================================================
+# SECURITY CONFIGURATION
+# ============================================================================
+# Change this in production!
+SECRET_KEY=your-secret-key-here-change-in-production-make-it-long-and-random
+ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=30
+
+# ============================================================================
+# CORS CONFIGURATION
+# ============================================================================
+# Comma-separated list of allowed origins
+CORS_ORIGINS=http://localhost:3000,http://localhost:8000,http://localhost:8001,http://localhost:8002,http://localhost:8005
+CORS_ALLOW_CREDENTIALS=true
+
+# ============================================================================
+# LOGGING CONFIGURATION
+# ============================================================================
+LOG_LEVEL=INFO
+LOG_FILE=logs/app.log
+LOG_FORMAT=%(asctime)s - %(name)s - %(levelname)s - %(message)s
+LOG_MAX_SIZE=10485760
+LOG_BACKUP_COUNT=5
+
+# ============================================================================
+# API LIMITS & PAGINATION
+# ============================================================================
+DEFAULT_PAGE_SIZE=20
+MAX_PAGE_SIZE=100
+RATE_LIMIT_REQUESTS=100
+RATE_LIMIT_WINDOW=60
+
+# ============================================================================
+# QUEUE CONFIGURATION
+# ============================================================================
+QUEUE_POLL_INTERVAL=5
+QUEUE_BATCH_SIZE=10
+MAX_RETRIES=3
+RETRY_DELAY=60
+
+# Processing Settings
+DEFAULT_PRIORITY=medium
+DEFAULT_PROCESSING_STRATEGY=table
+DEFAULT_QUALITY_THRESHOLD=0.8
+
+# Content Processing
+MAX_CONTENT_SIZE=10485760
+CONTENT_TIMEOUT=30
+
+# Queue Processing Limits
+TASK_DELAY_SECONDS=3
+
+# ============================================================================
+# PRODUCTION OVERRIDES (uncomment and modify for production)
+# ============================================================================
+
+# Production Environment Settings
+# ENVIRONMENT=production
+# TABLE_ENVIRONMENT=prod
+# GLOBAL_ENVIRONMENT=ec2
+# DEBUG=false
+
+# Production Server Settings
+# HOST=0.0.0.0
+# PORT=8005
+
+# Production AWS Settings (use IAM roles, don't set credentials)
+# AWS_REGION=us-east-1
+# AWS_ACCESS_KEY_ID=
+# AWS_SECRET_ACCESS_KEY=
+
+# Production Database Settings
+# DATABASE_TYPE=dynamodb
+# DYNAMODB_REGION=us-east-1
+# # Don't set DYNAMODB_ENDPOINT for production (uses AWS DynamoDB)
+
+# Production Storage Settings
+# STORAGE_TYPE=s3
+# S3_BUCKET_NAME=nex-pharma-insights-production-bucket
+
+# Production Security Settings
+# SECRET_KEY=your-super-secure-production-secret-key-at-least-32-characters-long
+# RATE_LIMIT_REQUESTS=1000
+# RATE_LIMIT_WINDOW=60
+
+# Production Logging Settings
+# LOG_LEVEL=INFO
+# LOG_FILE=/var/log/nex-pharma-insights/app.log
+
+# Production CORS Settings
+# CORS_ORIGINS=https://your-domain.com,https://api.your-domain.com
+
+# ============================================================================
+# STAGING OVERRIDES (uncomment and modify for staging)
+# ============================================================================
+
+# Staging Environment Settings
+# ENVIRONMENT=staging
+# TABLE_ENVIRONMENT=staging
+# GLOBAL_ENVIRONMENT=ec2
+# DEBUG=false
+
+# Staging Storage Settings
+# STORAGE_TYPE=s3
+# S3_BUCKET_NAME=nex-pharma-insights-staging-bucket
+
+# Staging Security Settings
+# SECRET_KEY=your-staging-secret-key-different-from-production
+# RATE_LIMIT_REQUESTS=500
+# RATE_LIMIT_WINDOW=60
+
+# ============================================================================
+# DEVELOPMENT NOTES
+# ============================================================================
+# 
+# For Local Development:
+# 1. Keep ENVIRONMENT=local
+# 2. Use STORAGE_TYPE=minio with local MinIO instance
+# 3. Use DYNAMODB_ENDPOINT=http://localhost:8000 for local DynamoDB
+# 4. Set DEBUG=true for detailed logging
+# 
+# For Production Deployment:
+# 1. Set ENVIRONMENT=production
+# 2. Use STORAGE_TYPE=s3 with AWS S3
+# 3. Remove DYNAMODB_ENDPOINT to use AWS DynamoDB
+# 4. Set DEBUG=false
+# 5. Use IAM roles instead of hardcoded AWS credentials
+# 6. Update all API keys with production values
+# 7. Set a strong SECRET_KEY
+# 
+# For Staging Environment:
+# 1. Set ENVIRONMENT=staging
+# 2. Use separate staging resources (S3 bucket, DynamoDB tables)
+# 3. Use staging API keys
+# 4. Set DEBUG=false but keep detailed logging
+# 
+# ============================================================================ 
