@@ -103,6 +103,7 @@ class BaseWorker(ABC):
                 expression_attribute_names={'#status': 'status'},
                 limit=self.batch_size
             )
+
             return items
         except Exception as e:
             logger.error(f"Failed to get pending items from {self.queue_name}: {str(e)}")

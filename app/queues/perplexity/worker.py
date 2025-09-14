@@ -198,12 +198,8 @@ class PerplexityWorker(BaseWorker):
         total_urls = payload.get('total_urls', 1)
         perplexity_response = payload.get('perplexity_response', '')
         
-        logger.info(f"DEBUG: URL data: {url_data.get('url', 'No URL')[:50]}..., has perplexity_response: {len(perplexity_response) > 0}")
-        
         # Create relevance_check, insight and implication queue items for this URL
-        # next_queues = ['insight', 'implication']
-        #relevance_check
-        next_queues = ['relevance_check','insight', 'implication']
+        next_queues = ['relevance_check', 'insight', 'implication']
         logger.info(f"Creating relevance_check + insight + implication queue items for URL {url_index}/{total_urls}")
         
         for queue_name in next_queues:
@@ -214,7 +210,7 @@ class PerplexityWorker(BaseWorker):
                     'perplexity_success': payload.get('perplexity_success', False),
                     's3_perplexity_key': payload.get('s3_perplexity_key', ''),
                     'url_data': url_data,
-                    'analysis_type': 'market_insights' if queue_name == 'insight' else 'business_implications',
+                    'analysis_type': 'market_insights' if queue_name == 'insight' else 'business_implications' if queue_name == 'implication' else 'relevance_check',
                     'user_prompt': payload.get('user_prompt', ''),
                     'source_info': payload.get('source_info', {}),
                     'url_index': url_index,
@@ -224,9 +220,9 @@ class PerplexityWorker(BaseWorker):
                     'publish_date': payload.get('publish_date'),
                     'source_category': payload.get('source_category')
                 }
-                
+
                 logger.info(f"DEBUG: Creating {queue_name} item with payload keys: {list(next_payload.keys())}")
-                
+
                 # Create queue item
                 queue_item = QueueItemFactory.create_queue_item(
                     queue_name=queue_name,
@@ -244,19 +240,19 @@ class PerplexityWorker(BaseWorker):
                         'created_from': 'perplexity'
                     }
                 )
-                
+
                 # Store in DynamoDB
                 table_name = QUEUE_TABLES[queue_name]
                 success = dynamodb_client.put_item(table_name, queue_item.dict())
-                
+
                 if success:
-                    logger.info(f"Created {queue_name} queue item for URL {url_index}/{total_urls}")
+                    logger.info(f"✅ Created {queue_name} queue item for URL {url_index}/{total_urls}")
                 else:
-                    logger.error(f"Failed to create {queue_name} queue item for URL {url_index}/{total_urls}")
-                    
+                    logger.error(f"❌ Failed to create {queue_name} queue item for URL {url_index}/{total_urls}")
+
             except Exception as e:
-                logger.error(f"Failed to create {queue_name} item for URL {url_index}/{total_urls}: {str(e)}")
-        
+                logger.error(f"❌ Failed to create {queue_name} item for URL {url_index}/{total_urls}: {str(e)}")
+
         logger.info(f"Completed creating relevance_check + insight + implication queue items for URL {url_index}/{total_urls}")
     
     def prepare_next_queue_payload(self, next_queue: str, completed_item: Dict[str, Any]) -> Dict[str, Any]:

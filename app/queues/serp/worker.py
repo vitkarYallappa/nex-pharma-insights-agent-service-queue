@@ -193,7 +193,7 @@ class SerpWorker(BaseWorker):
             return
         
         # Apply URL limit from configuration
-        max_urls = 3
+        max_urls = QUEUE_PROCESSING_LIMITS.get('max_perplexity_urls_per_serp', 3)
         
         if len(urls_with_data) > max_urls:
             logger.info(f"Found {len(urls_with_data)} URLs, limiting to top {max_urls} for Perplexity processing")
@@ -203,6 +203,10 @@ class SerpWorker(BaseWorker):
             selected_urls = urls_with_data
         
         logger.info(f"Creating {len(selected_urls)} Perplexity queue items (limit: {max_urls})")
+        
+        # Track success/failure counts
+        success_count = 0
+        failure_count = 0
         
         # Create one Perplexity queue item for each selected URL
         for i, url_data in enumerate(selected_urls):
@@ -251,14 +255,21 @@ class SerpWorker(BaseWorker):
                 success = dynamodb_client.put_item(table_name, queue_item.dict())
                 
                 if success:
-                    logger.info(f"Created Perplexity queue item {i+1}/{len(selected_urls)} for URL: {url_data['url'][:50]}... (score: {url_data.get('relevance_score', 0.5):.2f})")
+                    success_count += 1
+                    logger.info(f"✅ Created Perplexity queue item {i+1}/{len(selected_urls)} for URL: {url_data['url'][:50]}... (score: {url_data.get('relevance_score', 0.5):.2f})")
                 else:
-                    logger.error(f"Failed to create Perplexity queue item {i+1}/{len(selected_urls)}")
+                    failure_count += 1
+                    logger.error(f"❌ Failed to create Perplexity queue item {i+1}/{len(selected_urls)} - DynamoDB put_item failed")
 
             except Exception as e:
-                logger.error(f"Failed to create Perplexity item {i+1}/{len(selected_urls)}: {str(e)}")
+                failure_count += 1
+                logger.error(f"❌ Failed to create Perplexity item {i+1}/{len(selected_urls)}: {str(e)}")
         
-        logger.info(f"Completed creating {len(selected_urls)} Perplexity queue items (found {len(urls_with_data)} total URLs)")
+        # Log final summary
+        logger.info(f"🎯 SERP → Perplexity Creation Summary: {success_count} successful, {failure_count} failed out of {len(selected_urls)} total URLs (found {len(urls_with_data)} URLs originally)")
+        
+        if failure_count > 0:
+            logger.warning(f"⚠️  {failure_count} Perplexity queue items failed to create - this will affect the expected 1:3 SERP to Perplexity ratio")
     
     def _create_url_analysis_prompt(self, url_data: Dict[str, Any], keywords: List[str], source: Dict[str, Any]) -> str:
         """Create analysis prompt for a specific URL using simplified prompt system"""

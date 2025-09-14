@@ -464,11 +464,11 @@ QUEUE_WORKFLOW = {
 
 # Queue Processing Limits
 QUEUE_PROCESSING_LIMITS = {
-    "max_perplexity_urls_per_serp": 1,  # Maximum URLs to send to Perplexity from each SERP result
+    "max_perplexity_urls_per_serp": 3,  # Maximum URLs to send to Perplexity from each SERP result (was 1, now 3 to match code)
     "max_serp_results": 50,  # Maximum search results to process
     "max_insight_items": 10,  # Maximum insight items per request
     "max_implication_items": 10,  # Maximum implication items per request
-    "task_delay_seconds": 3  # Delay between processing each queue item (seconds)
+    "task_delay_seconds": 3  # Delay between processing each queue item (seconds) - restored to 3 for stability
 }
 
 # S3 Storage Paths

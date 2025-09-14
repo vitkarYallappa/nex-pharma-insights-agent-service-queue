@@ -48,10 +48,10 @@ class RequestAcceptanceWorker(BaseWorker):
             from app.database.dynamodb_client import dynamodb_client
             
             success = dynamodb_client.update_item(
-                table_name=self.table_name,
-                key={'PK': item['PK'], 'SK': item['SK']},
-                update_expression="SET payload = :payload, updated_at = :updated_at",
-                expression_attribute_values={
+                self.table_name,
+                {'PK': item['PK'], 'SK': item['SK']},
+                "SET payload = :payload, updated_at = :updated_at",
+                {
                     ':payload': updated_payload,
                     ':updated_at': datetime.utcnow().isoformat()
                 }

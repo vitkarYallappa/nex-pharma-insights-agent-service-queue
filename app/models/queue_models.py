@@ -56,7 +56,9 @@ class RequestAcceptanceQueue(BaseQueueModel):
     def __init__(self, project_id: str, project_request_id: str, **data):
         # Set keys
         data['PK'] = f"{project_id}#{project_request_id}"
-        data['SK'] = f"request_acceptance#{int(datetime.utcnow().timestamp())}"
+        # Use microsecond precision to prevent key collisions when creating multiple items rapidly
+        timestamp = datetime.utcnow()
+        data['SK'] = f"request_acceptance#{int(timestamp.timestamp())}#{timestamp.microsecond}"
         super().__init__(**data)
 
 
@@ -65,7 +67,9 @@ class SerpQueue(BaseQueueModel):
     
     def __init__(self, project_id: str, project_request_id: str, **data):
         data['PK'] = f"{project_id}#{project_request_id}"
-        data['SK'] = f"serp#{int(datetime.utcnow().timestamp())}"
+        # Use microsecond precision to prevent key collisions when creating multiple items rapidly
+        timestamp = datetime.utcnow()
+        data['SK'] = f"serp#{int(timestamp.timestamp())}#{timestamp.microsecond}"
         super().__init__(**data)
 
 
@@ -74,7 +78,9 @@ class PerplexityQueue(BaseQueueModel):
     
     def __init__(self, project_id: str, project_request_id: str, **data):
         data['PK'] = f"{project_id}#{project_request_id}"
-        data['SK'] = f"perplexity#{int(datetime.utcnow().timestamp())}"
+        # Use microsecond precision to prevent key collisions when creating multiple items rapidly
+        timestamp = datetime.utcnow()
+        data['SK'] = f"perplexity#{int(timestamp.timestamp())}#{timestamp.microsecond}"
         super().__init__(**data)
 
 
@@ -83,7 +89,9 @@ class FetchContentQueue(BaseQueueModel):
     
     def __init__(self, project_id: str, project_request_id: str, **data):
         data['PK'] = f"{project_id}#{project_request_id}"
-        data['SK'] = f"fetch_content#{int(datetime.utcnow().timestamp())}"
+        # Use microsecond precision to prevent key collisions when creating multiple items rapidly
+        timestamp = datetime.utcnow()
+        data['SK'] = f"fetch_content#{int(timestamp.timestamp())}#{timestamp.microsecond}"
         super().__init__(**data)
 
 
@@ -92,7 +100,9 @@ class InsightQueue(BaseQueueModel):
     
     def __init__(self, project_id: str, project_request_id: str, **data):
         data['PK'] = f"{project_id}#{project_request_id}"
-        data['SK'] = f"insight#{int(datetime.utcnow().timestamp())}"
+        # Use microsecond precision to prevent key collisions when creating multiple items rapidly
+        timestamp = datetime.utcnow()
+        data['SK'] = f"insight#{int(timestamp.timestamp())}#{timestamp.microsecond}"
         super().__init__(**data)
 
 
@@ -101,7 +111,9 @@ class ImplicationQueue(BaseQueueModel):
     
     def __init__(self, project_id: str, project_request_id: str, **data):
         data['PK'] = f"{project_id}#{project_request_id}"
-        data['SK'] = f"implication#{int(datetime.utcnow().timestamp())}"
+        # Use microsecond precision to prevent key collisions when creating multiple items rapidly
+        timestamp = datetime.utcnow()
+        data['SK'] = f"implication#{int(timestamp.timestamp())}#{timestamp.microsecond}"
         super().__init__(**data)
 
 
@@ -110,7 +122,9 @@ class RelevanceCheckQueue(BaseQueueModel):
     
     def __init__(self, project_id: str, project_request_id: str, **data):
         data['PK'] = f"{project_id}#{project_request_id}"
-        data['SK'] = f"relevance_check#{int(datetime.utcnow().timestamp())}"
+        # Use microsecond precision to prevent key collisions when creating multiple items rapidly
+        timestamp = datetime.utcnow()
+        data['SK'] = f"relevance_check#{int(timestamp.timestamp())}#{timestamp.microsecond}"
         super().__init__(**data)
 
 
