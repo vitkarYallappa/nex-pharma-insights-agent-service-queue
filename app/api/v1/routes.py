@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from config import settings, QUEUE_TABLES, QUEUE_PROCESSING_LIMITS
+from app.config import settings, QUEUE_TABLES, QUEUE_PROCESSING_LIMITS
 from app.models.request_models import (
     MarketIntelligenceRequest, RequestResponse, RequestStatus
 )

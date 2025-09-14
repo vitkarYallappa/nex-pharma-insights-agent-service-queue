@@ -180,7 +180,7 @@ class PerplexityWorker(BaseWorker):
         """Override to create BOTH insight and implication queue items for this URL"""
         from app.models.queue_models import QueueItemFactory
         from app.database.dynamodb_client import dynamodb_client
-        from config import QUEUE_TABLES
+        from app.config import QUEUE_TABLES
         
         logger.info(f"DEBUG: Perplexity _trigger_next_queues called with item keys: {list(completed_item.keys())}")
         

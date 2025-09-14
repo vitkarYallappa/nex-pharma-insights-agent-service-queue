@@ -5,7 +5,7 @@ from datetime import datetime
 import json
 from decimal import Decimal
 
-from config import settings, QUEUE_TABLES
+from app.config import settings, QUEUE_TABLES
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)

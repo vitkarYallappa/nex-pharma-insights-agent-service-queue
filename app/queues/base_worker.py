@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 
-from config import settings, QUEUE_TABLES, QUEUE_WORKFLOW, QUEUE_PROCESSING_LIMITS
+from app.config import settings, QUEUE_TABLES, QUEUE_WORKFLOW, QUEUE_PROCESSING_LIMITS
 from app.database.dynamodb_client import dynamodb_client
 from app.database.s3_client import s3_client
 from app.models.queue_models import QueueStatus

@@ -6,7 +6,7 @@ from datetime import datetime
 import io
 import gzip
 
-from config import settings, S3_PATHS
+from app.config import settings, S3_PATHS
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)

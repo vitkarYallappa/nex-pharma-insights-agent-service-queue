@@ -3,7 +3,7 @@ import sys
 from datetime import datetime
 from typing import Optional
 
-from config import settings
+from app.config import settings
 
 
 class ColoredFormatter(logging.Formatter):

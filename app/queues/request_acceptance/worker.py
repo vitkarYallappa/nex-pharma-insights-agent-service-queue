@@ -101,7 +101,7 @@ class RequestAcceptanceWorker(BaseWorker):
         # For SERP queue, create one item per source
         from app.models.queue_models import QueueItemFactory
         from app.database.dynamodb_client import dynamodb_client
-        from config import QUEUE_TABLES
+        from app.config import QUEUE_TABLES
         
         payload = completed_item.get('payload', {})
         original_request = payload.get('original_request', {})

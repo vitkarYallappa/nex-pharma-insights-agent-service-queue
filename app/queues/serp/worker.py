@@ -148,7 +148,7 @@ class SerpWorker(BaseWorker):
         """Override to create multiple Perplexity items - one for each URL (with limit)"""
         from app.models.queue_models import QueueItemFactory
         from app.database.dynamodb_client import dynamodb_client
-        from config import QUEUE_TABLES, QUEUE_WORKFLOW, QUEUE_PROCESSING_LIMITS
+        from app.config import QUEUE_TABLES, QUEUE_WORKFLOW, QUEUE_PROCESSING_LIMITS
         
         logger.info(f"DEBUG: _trigger_next_queues called with item keys: {list(completed_item.keys())}")
         

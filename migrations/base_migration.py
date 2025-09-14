@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 from typing import Dict, Any
 from botocore.exceptions import ClientError
 from app.utils.logger import get_logger
-from config import settings
+from app.config import settings
 
 logger = get_logger(__name__)
 

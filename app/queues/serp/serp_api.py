@@ -4,7 +4,7 @@ import os
 from typing import Dict, Any, Optional, List
 from .models import SerpRequest, SerpResponse, SerpResult
 from .serp_query_builder import build_query, build_date_range_query
-from config import settings
+from app.config import settings
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
