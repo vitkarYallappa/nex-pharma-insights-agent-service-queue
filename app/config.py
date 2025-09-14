@@ -362,10 +362,13 @@ class UnifiedSettings(BaseSettings):
         config_dir = Path(__file__).parent
         
         # Look for .env file in config directory and parent directories
+        # Priority order: production.env > .env.production > .env
         env_file = [
-            str(config_dir / ".env"),           # app/.env
-            str(config_dir.parent / ".env"),    # project_root/.env (this is what we want)
-            str(config_dir.parent.parent / ".env")  # grandparent/.env
+            str(config_dir.parent / "deployment" / "production.env"),  # deployment/production.env
+            str(config_dir.parent / ".env.production"),               # .env.production
+            str(config_dir / ".env"),                                  # app/.env
+            str(config_dir.parent / ".env"),                          # project_root/.env
+            str(config_dir.parent.parent / ".env")                    # grandparent/.env
         ]
         case_sensitive = True
         extra = "allow"  # Allow extra properties
